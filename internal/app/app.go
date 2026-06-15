@@ -20,7 +20,7 @@ import (
 	"aws-terminal/internal/ui/shell"
 )
 
-func Run() error {
+func Run(version string) error {
 	profileRepository := awsconfig.NewSharedConfigProfileRepository()
 	identityResolver := awsconfig.NewSTSIdentityResolver()
 	sessionService := appsession.NewService(profileRepository, identityResolver)
@@ -31,11 +31,12 @@ func Run() error {
 	ecrService := appecr.NewService(awsecr.NewService(), dockerService)
 	ecsService := appecs.NewService(awsecs.NewService())
 	preferenceStore, _ := config.NewFilePreferenceStore()
+	updateService := NewUpdateService(version)
 
 	pageRegistry := DefaultPages(s3Service, cloudFrontService, ecrService, ecsService, preferenceStore)
 
 	program := tea.NewProgram(
-		shell.NewModelWithPreferences(sessionService, authService, pageRegistry, preferenceStore),
+		shell.NewModelWithPreferencesAndUpdates(sessionService, authService, pageRegistry, preferenceStore, updateService),
 		tea.WithAltScreen(),
 	)
 
