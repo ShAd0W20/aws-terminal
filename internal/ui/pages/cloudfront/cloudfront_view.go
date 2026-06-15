@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 
 	"aws-terminal/internal/ui/styles"
+	"aws-terminal/internal/ui/tableutil"
 )
 
 func (p *CloudFrontPage) View(state State, width, height int) string {
@@ -42,7 +43,7 @@ func (p *CloudFrontPage) View(state State, width, height int) string {
 	lines = append(lines, "")
 	switch p.stage {
 	case cloudFrontStageDistribution:
-		lines = append(lines, p.distributionStageLines(height)...)
+		lines = append(lines, p.distributionStageLines(width, height)...)
 	case cloudFrontStagePaths:
 		lines = append(lines, p.pathsStageLines(width)...)
 	case cloudFrontStageResult:
@@ -72,7 +73,7 @@ func (p *CloudFrontPage) FullHelp() [][]key.Binding {
 	return [][]key.Binding{p.ShortHelp()}
 }
 
-func (p *CloudFrontPage) distributionStageLines(height int) []string {
+func (p *CloudFrontPage) distributionStageLines(width, height int) []string {
 	lines := []string{styles.MutedStyle.Render("Step 1 · Select a distribution")}
 	if p.loading {
 		return append(lines, styles.StatusStyle.Render("Loading distributions..."))
@@ -84,13 +85,15 @@ func (p *CloudFrontPage) distributionStageLines(height int) []string {
 		return append(lines, styles.MutedStyle.Render("No distributions found for this profile."))
 	}
 
-	visible := max(5, height/3)
+	visible := max(5, height-14)
 	start := max(0, p.distributionIndex-visible/2)
 	end := min(len(p.distributions), start+visible)
 	if end-start < visible {
 		start = max(0, end-visible)
 	}
 
+	listLines := []string{}
+	listWidth := max(40, width-styles.PanelStyle.GetHorizontalFrameSize()-8)
 	for index := start; index < end; index++ {
 		distribution := p.distributions[index]
 		prefix := "  "
@@ -106,11 +109,13 @@ func (p *CloudFrontPage) distributionStageLines(height int) []string {
 		} else if distribution.DomainName != "" {
 			label += "  " + distribution.DomainName
 		}
+		label = tableutil.Truncate(label, listWidth-4)
 		if !distribution.Enabled {
 			label += styles.MutedStyle.Render("  disabled")
 		}
-		lines = append(lines, style.Render(prefix+label))
+		listLines = append(listLines, style.Render(prefix+label))
 	}
+	lines = append(lines, tableutil.RenderBox(strings.Join(listLines, "\n"), listWidth+4))
 
 	lines = append(lines, "", styles.MutedStyle.Render("Press Enter to continue with the selected distribution."))
 	return lines

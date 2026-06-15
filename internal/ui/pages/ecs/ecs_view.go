@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 
 	"aws-terminal/internal/ui/styles"
+	"aws-terminal/internal/ui/tableutil"
 	"aws-terminal/internal/ui/workflow"
 )
 
@@ -28,9 +29,9 @@ func (p *ECSPage) View(state State, width, height int) string {
 	lines = append(lines, "")
 	switch p.stage {
 	case ecsStageClusters:
-		lines = append(lines, p.clusterLines()...)
+		lines = append(lines, p.clusterLines(width, height, len(lines))...)
 	case ecsStageResources:
-		lines = append(lines, p.resourceLines()...)
+		lines = append(lines, p.resourceLines(width, height, len(lines))...)
 	case ecsStageServiceDetail:
 		lines = append(lines, p.serviceDetailLines()...)
 	case ecsStageTaskDetail:
@@ -50,7 +51,7 @@ func (p *ECSPage) ShortHelp() []key.Binding {
 }
 func (p *ECSPage) FullHelp() [][]key.Binding { return [][]key.Binding{p.ShortHelp()} }
 
-func (p *ECSPage) clusterLines() []string {
+func (p *ECSPage) clusterLines(width, height, usedLines int) []string {
 	lines := []string{styles.MutedStyle.Render("ECS clusters"), p.searchHint("clusters"), p.searchInput.View()}
 	if p.loadingClusters {
 		return append(lines, styles.StatusStyle.Render(p.spinner.View()+" Loading clusters..."))
@@ -65,13 +66,15 @@ func (p *ECSPage) clusterLines() []string {
 		}
 		return append(lines, styles.MutedStyle.Render("No ECS clusters found in this region."))
 	}
+	tableWidth := max(40, width-styles.PanelStyle.GetHorizontalFrameSize()-8)
+	p.configureClusterTable(tableWidth, height-usedLines-len(lines)-6)
 	p.syncClusterTable()
-	lines = append(lines, "", p.clusterTable.View())
+	lines = append(lines, "", tableutil.RenderBox(p.clusterTable.View(), tableWidth+4))
 	start, end := p.clusterPaginator.GetSliceBounds(len(items))
 	lines = append(lines, styles.MutedStyle.Render(fmt.Sprintf("Page %s · showing %d-%d of %d", p.clusterPaginator.View(), start+1, end, len(items))))
 	return lines
 }
-func (p *ECSPage) resourceLines() []string {
+func (p *ECSPage) resourceLines(width, height, usedLines int) []string {
 	tab := "Services"
 	if p.tab == ecsTabTasks {
 		tab = "Tasks"
@@ -81,13 +84,13 @@ func (p *ECSPage) resourceLines() []string {
 		lines[1] = styles.MutedStyle.Render("Tabs: Services [ Tasks ]")
 	}
 	if p.tab == ecsTabServices {
-		lines = append(lines, p.servicesLines()...)
+		lines = append(lines, p.servicesLines(width, height, usedLines+len(lines))...)
 	} else {
-		lines = append(lines, p.tasksLines()...)
+		lines = append(lines, p.tasksLines(width, height, usedLines+len(lines))...)
 	}
 	return lines
 }
-func (p *ECSPage) servicesLines() []string {
+func (p *ECSPage) servicesLines(width, height, usedLines int) []string {
 	lines := []string{}
 	if p.servicesLoading {
 		return append(lines, styles.StatusStyle.Render(p.spinner.View()+" Loading services..."))
@@ -102,12 +105,14 @@ func (p *ECSPage) servicesLines() []string {
 		}
 		return append(lines, styles.MutedStyle.Render("No ECS services found in this cluster."))
 	}
+	tableWidth := max(48, width-styles.PanelStyle.GetHorizontalFrameSize()-8)
+	p.configureServiceTable(tableWidth, height-usedLines-len(lines)-6)
 	p.syncServiceTable()
-	lines = append(lines, "", p.serviceTable.View())
+	lines = append(lines, "", tableutil.RenderBox(p.serviceTable.View(), tableWidth+4))
 	start, end := p.servicePaginator.GetSliceBounds(len(items))
 	return append(lines, styles.MutedStyle.Render(fmt.Sprintf("Page %s · showing %d-%d of %d", p.servicePaginator.View(), start+1, end, len(items))))
 }
-func (p *ECSPage) tasksLines() []string {
+func (p *ECSPage) tasksLines(width, height, usedLines int) []string {
 	lines := []string{}
 	if p.tasksLoading {
 		return append(lines, styles.StatusStyle.Render(p.spinner.View()+" Loading tasks..."))
@@ -122,8 +127,10 @@ func (p *ECSPage) tasksLines() []string {
 		}
 		return append(lines, styles.MutedStyle.Render("No non-stopped ECS tasks found in this cluster."))
 	}
+	tableWidth := max(56, width-styles.PanelStyle.GetHorizontalFrameSize()-8)
+	p.configureTaskTable(tableWidth, height-usedLines-len(lines)-6)
 	p.syncTaskTable()
-	lines = append(lines, "", p.taskTable.View())
+	lines = append(lines, "", tableutil.RenderBox(p.taskTable.View(), tableWidth+4))
 	start, end := p.taskPaginator.GetSliceBounds(len(items))
 	return append(lines, styles.MutedStyle.Render(fmt.Sprintf("Page %s · showing %d-%d of %d", p.taskPaginator.View(), start+1, end, len(items))))
 }

@@ -9,6 +9,7 @@ import (
 
 	domains3 "aws-terminal/internal/domain/s3"
 	"aws-terminal/internal/ui/styles"
+	"aws-terminal/internal/ui/tableutil"
 )
 
 func (p *S3Page) View(state State, width, height int) string {
@@ -48,7 +49,7 @@ func (p *S3Page) View(state State, width, height int) string {
 
 	switch p.stage {
 	case s3StageBucket:
-		lines = append(lines, p.bucketStageLines(height)...)
+		lines = append(lines, p.bucketStageLines(width, height)...)
 	case s3StageSource:
 		lines = append(lines, p.sourceStageLines(width, height)...)
 	case s3StagePrefix:
@@ -128,7 +129,7 @@ func (p *S3Page) workflowSummaryLines() []string {
 	}
 }
 
-func (p *S3Page) bucketStageLines(height int) []string {
+func (p *S3Page) bucketStageLines(width, height int) []string {
 	lines := []string{styles.MutedStyle.Render("Step 1 of 4 · Select a destination bucket")}
 	if p.loadingBuckets {
 		lines = append(lines, styles.StatusStyle.Render("Loading buckets for the active profile..."))
@@ -145,13 +146,15 @@ func (p *S3Page) bucketStageLines(height int) []string {
 		return lines
 	}
 
-	visible := max(5, height/3)
+	visible := max(5, height-18)
 	start := max(0, p.bucketIndex-visible/2)
 	end := min(len(p.buckets), start+visible)
 	if end-start < visible {
 		start = max(0, end-visible)
 	}
 
+	listLines := []string{}
+	listWidth := max(32, width-styles.PanelStyle.GetHorizontalFrameSize()-8)
 	for index := start; index < end; index++ {
 		prefix := "  "
 		style := styles.SidebarItemStyle
@@ -160,12 +163,14 @@ func (p *S3Page) bucketStageLines(height int) []string {
 			style = styles.FocusedSelectedSidebarItemStyle
 		}
 		bucket := p.buckets[index]
-		line := fmt.Sprintf("%s%s", prefix, bucket.Name)
+		nameWidth := max(12, listWidth-24)
+		line := fmt.Sprintf("%s%s", prefix, tableutil.Truncate(bucket.Name, nameWidth))
 		if !bucket.CreationDate.IsZero() {
 			line += styles.MutedStyle.Render("  created " + bucket.CreationDate.Local().Format("2006-01-02"))
 		}
-		lines = append(lines, style.Render(line))
+		listLines = append(listLines, style.Render(line))
 	}
+	lines = append(lines, tableutil.RenderBox(strings.Join(listLines, "\n"), listWidth+4))
 
 	lines = append(lines, "", styles.MutedStyle.Render("Press Enter to use the highlighted bucket and continue to the local source picker."))
 	return lines

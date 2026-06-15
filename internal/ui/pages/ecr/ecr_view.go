@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 
 	"aws-terminal/internal/ui/styles"
+	"aws-terminal/internal/ui/tableutil"
 	"aws-terminal/internal/ui/workflow"
 )
 
@@ -31,13 +32,13 @@ func (p *ECRPage) View(state State, width, height int) string {
 	lines = append(lines, "")
 	switch p.stage {
 	case ecrStageRepository:
-		lines = append(lines, p.repositoryLines(height)...)
+		lines = append(lines, p.repositoryLines(width, height)...)
 	case ecrStageCreateRepository:
 		lines = append(lines, p.createLines(width)...)
 	case ecrStageRepositoryImages:
-		lines = append(lines, p.imageLines(height)...)
+		lines = append(lines, p.imageLines(width, height, len(lines))...)
 	case ecrStageLocalImage:
-		lines = append(lines, p.localLines(height)...)
+		lines = append(lines, p.localLines(width, height, len(lines))...)
 	case ecrStageTag:
 		lines = append(lines, p.tagLines(width)...)
 	case ecrStageReview:
@@ -70,7 +71,7 @@ func (p *ECRPage) summaryLines() []string {
 	return []string{styles.MutedStyle.Render("Workflow summary"), fmt.Sprintf("Repository: %s", workflow.ValueOrFallback(p.selectedRepository.Name, "not selected")), fmt.Sprintf("Repository URI: %s", workflow.ValueOrFallback(p.selectedRepository.URI, "not selected")), fmt.Sprintf("Source image: %s", workflow.ValueOrFallback(p.selectedSourceImage(), "not selected"))}
 }
 
-func (p *ECRPage) repositoryLines(height int) []string {
+func (p *ECRPage) repositoryLines(width, height int) []string {
 	searchHint := "Press Ctrl+F to search."
 	if p.searchInput.Focused() {
 		searchHint = "Search active. Type to filter; Esc leaves search."
@@ -88,12 +89,14 @@ func (p *ECRPage) repositoryLines(height int) []string {
 		lines = append(lines, styles.MutedStyle.Render("No repositories match. Press Enter or c to create one."))
 		return lines
 	}
-	visible := max(5, height/3)
+	visible := max(5, height-18)
 	start := max(0, p.repositoryIndex-visible/2)
 	end := min(len(filtered), start+visible)
 	if end-start < visible {
 		start = max(0, end-visible)
 	}
+	listWidth := max(40, width-styles.PanelStyle.GetHorizontalFrameSize()-8)
+	listLines := []string{}
 	for i := start; i < end; i++ {
 		repo := filtered[i]
 		prefix := "  "
@@ -102,8 +105,11 @@ func (p *ECRPage) repositoryLines(height int) []string {
 			prefix = "▸ "
 			style = styles.FocusedSelectedSidebarItemStyle
 		}
-		lines = append(lines, style.Render(fmt.Sprintf("%s%s  %s", prefix, repo.Name, styles.MutedStyle.Render(repo.URI))))
+		name := tableutil.Truncate(repo.Name, max(12, listWidth/3))
+		uri := tableutil.Truncate(repo.URI, max(12, listWidth-len([]rune(name))-6))
+		listLines = append(listLines, style.Render(fmt.Sprintf("%s%s  %s", prefix, name, styles.MutedStyle.Render(uri))))
 	}
+	lines = append(lines, tableutil.RenderBox(strings.Join(listLines, "\n"), listWidth))
 	return lines
 }
 func (p *ECRPage) createLines(width int) []string {
@@ -117,7 +123,7 @@ func (p *ECRPage) createLines(width int) []string {
 	lines = append(lines, styles.MutedStyle.Render("Repository names must be lowercase and may include /, _, ., or -."))
 	return lines
 }
-func (p *ECRPage) imageLines(height int) []string {
+func (p *ECRPage) imageLines(width, height, usedLines int) []string {
 	lines := []string{styles.MutedStyle.Render("Repository images"), fmt.Sprintf("Repository: %s", p.selectedRepository.Name)}
 	if p.imagesLoading {
 		return append(lines, styles.StatusStyle.Render(p.spinner.View()+" Loading images..."))
@@ -133,8 +139,10 @@ func (p *ECRPage) imageLines(height int) []string {
 	}
 
 	if len(p.repositoryImages) > 0 {
+		tableWidth := max(60, width-styles.PanelStyle.GetHorizontalFrameSize()-8)
+		p.configureImageTable(tableWidth, height-usedLines-len(lines)-7)
 		p.syncImageTable()
-		lines = append(lines, "", p.imageTable.View())
+		lines = append(lines, "", tableutil.RenderBox(p.imageTable.View(), tableWidth+4))
 		if p.imagePaginator.TotalPages > 1 {
 			start, end := p.imagePaginator.GetSliceBounds(len(p.repositoryImages))
 			lines = append(lines, styles.MutedStyle.Render(fmt.Sprintf("Page %s · showing %d-%d of %d · use ←/h and →/l to page", p.imagePaginator.View(), start+1, end, len(p.repositoryImages))))
@@ -143,7 +151,7 @@ func (p *ECRPage) imageLines(height int) []string {
 	lines = append(lines, "", styles.MutedStyle.Render("Press Enter to choose a local Docker image to push."))
 	return lines
 }
-func (p *ECRPage) localLines(height int) []string {
+func (p *ECRPage) localLines(width, height, usedLines int) []string {
 	searchHint := "Press Ctrl+F to search local images; if no image matches, the search text is used as a manual image reference."
 	if p.manualInput.Focused() {
 		searchHint = "Local image search active. Type to filter; Esc leaves search."
@@ -162,8 +170,10 @@ func (p *ECRPage) localLines(height int) []string {
 		return lines
 	}
 
+	tableWidth := max(60, width-styles.PanelStyle.GetHorizontalFrameSize()-8)
+	p.configureLocalTable(tableWidth, height-usedLines-len(lines)-6)
 	p.syncLocalTable()
-	lines = append(lines, "", p.localTable.View())
+	lines = append(lines, "", tableutil.RenderBox(p.localTable.View(), tableWidth+4))
 	start, end := p.localPaginator.GetSliceBounds(len(filtered))
 	if p.localPaginator.TotalPages > 1 {
 		lines = append(lines, styles.MutedStyle.Render(fmt.Sprintf("Page %s · showing %d-%d of %d local images · use ←/h and →/l to page", p.localPaginator.View(), start+1, end, len(filtered))))

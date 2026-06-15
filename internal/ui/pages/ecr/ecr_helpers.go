@@ -11,30 +11,23 @@ import (
 
 	domainecr "aws-terminal/internal/domain/ecr"
 	"aws-terminal/internal/ui/styles"
+	"aws-terminal/internal/ui/tableutil"
 	"aws-terminal/internal/ui/workflow"
 )
 
 func ecrSessionKey(state State) string { return workflow.SessionKey(state) }
 func activeRegion(state State) string  { return workflow.ActiveRegion(state) }
 
-func ecrImageTableColumns() []table.Column {
-	return []table.Column{
-		{Title: "Tags", Width: 30},
-		{Title: "Size", Width: 10},
-		{Title: "Created", Width: 17},
-		{Title: "Last pulled", Width: 17},
-		{Title: "Digest", Width: 24},
-	}
+func ecrImageTableColumnsForWidth(width int) []table.Column {
+	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Tags", Min: 18, Weight: 4, Max: 56}, {Title: "Size", Min: 10}, {Title: "Created", Min: 16}, {Title: "Last pulled", Min: 16}, {Title: "Digest", Min: 20, Weight: 2, Max: 40}})
 }
 
-func ecrLocalImageTableColumns() []table.Column {
-	return []table.Column{
-		{Title: "Image", Width: 62},
-		{Title: "Size", Width: 10},
-		{Title: "Created", Width: 17},
-		{Title: "ID", Width: 24},
-	}
+func ecrLocalImageTableColumnsForWidth(width int) []table.Column {
+	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Image", Min: 28, Weight: 5, Max: 88}, {Title: "Size", Min: 10}, {Title: "Created", Min: 16}, {Title: "ID", Min: 20, Weight: 2, Max: 40}})
 }
+
+func ecrImageTableColumns() []table.Column      { return ecrImageTableColumnsForWidth(112) }
+func ecrLocalImageTableColumns() []table.Column { return ecrLocalImageTableColumnsForWidth(120) }
 
 func ecrTableStyles() table.Styles {
 	tableStyles := table.DefaultStyles()
@@ -52,13 +45,29 @@ func ecrTextInputKey(msg tea.KeyMsg) bool {
 	}
 }
 
+func (p *ECRPage) configureImageTable(width, rows int) {
+	rows = max(5, rows)
+	p.imagePaginator.PerPage = rows
+	p.imageTable.SetHeight(rows + 1)
+	p.imageTable.SetWidth(width)
+	p.imageTable.SetColumns(ecrImageTableColumnsForWidth(width))
+}
+
+func (p *ECRPage) configureLocalTable(width, rows int) {
+	rows = max(5, rows)
+	p.localPaginator.PerPage = rows
+	p.localTable.SetHeight(rows + 1)
+	p.localTable.SetWidth(width)
+	p.localTable.SetColumns(ecrLocalImageTableColumnsForWidth(width))
+}
+
 func (p *ECRPage) syncImageTable() {
 	p.imagePaginator.SetTotalPages(len(p.repositoryImages))
 	if p.imagePaginator.Page >= p.imagePaginator.TotalPages {
 		p.imagePaginator.Page = max(0, p.imagePaginator.TotalPages-1)
 	}
 	start, end := p.imagePaginator.GetSliceBounds(len(p.repositoryImages))
-	p.imageTable.SetRows(ecrImageRows(p.repositoryImages[start:end]))
+	p.imageTable.SetRows(ecrImageRowsForColumns(p.repositoryImages[start:end], p.imageTable.Columns()))
 }
 
 func (p *ECRPage) syncLocalTable() {
@@ -77,11 +86,11 @@ func (p *ECRPage) syncLocalTable() {
 	if p.localIndex < start || p.localIndex >= end {
 		p.localIndex = start
 	}
-	p.localTable.SetRows(ecrLocalImageRows(filtered[start:end]))
+	p.localTable.SetRows(ecrLocalImageRowsForColumns(filtered[start:end], p.localTable.Columns()))
 	p.localTable.SetCursor(max(0, p.localIndex-start))
 }
 
-func ecrImageRows(images []domainecr.RepositoryImage) []table.Row {
+func ecrImageRowsForColumns(images []domainecr.RepositoryImage, cols []table.Column) []table.Row {
 	rows := make([]table.Row, 0, len(images))
 	for _, img := range images {
 		tag := "<untagged>"
@@ -89,27 +98,35 @@ func ecrImageRows(images []domainecr.RepositoryImage) []table.Row {
 			tag = strings.Join(img.Tags, ",")
 		}
 		rows = append(rows, table.Row{
-			truncateText(tag, 30),
+			tableutil.Truncate(tag, cols[0].Width),
 			formatBytes(img.SizeBytes),
 			formatTableTime(img.PushedAt),
 			formatTableTime(img.LastRecordedPullAt),
-			shortDigest(img.Digest),
+			tableutil.Truncate(img.Digest, cols[4].Width),
 		})
 	}
 	return rows
 }
 
-func ecrLocalImageRows(images []domainecr.LocalImage) []table.Row {
+func ecrLocalImageRowsForColumns(images []domainecr.LocalImage, cols []table.Column) []table.Row {
 	rows := make([]table.Row, 0, len(images))
 	for _, img := range images {
 		rows = append(rows, table.Row{
-			truncateText(img.Reference, 62),
+			tableutil.Truncate(img.Reference, cols[0].Width),
 			formatBytes(img.SizeBytes),
 			formatTableTime(img.CreatedAt),
-			shortDigest(img.ID),
+			tableutil.Truncate(img.ID, cols[3].Width),
 		})
 	}
 	return rows
+}
+
+func ecrImageRows(images []domainecr.RepositoryImage) []table.Row {
+	return ecrImageRowsForColumns(images, ecrImageTableColumns())
+}
+
+func ecrLocalImageRows(images []domainecr.LocalImage) []table.Row {
+	return ecrLocalImageRowsForColumns(images, ecrLocalImageTableColumns())
 }
 
 func formatBytes(bytes int64) string {

@@ -11,6 +11,7 @@ import (
 
 	domainecs "aws-terminal/internal/domain/ecs"
 	"aws-terminal/internal/ui/styles"
+	"aws-terminal/internal/ui/tableutil"
 	"aws-terminal/internal/ui/workflow"
 )
 
@@ -23,15 +24,18 @@ func tableStyles() table.Styles {
 	s.Selected = styles.FocusedSelectedSidebarItemStyle
 	return s
 }
-func clusterColumns() []table.Column {
-	return []table.Column{{Title: "Cluster", Width: 28}, {Title: "Status", Width: 10}, {Title: "Services", Width: 8}, {Title: "Running", Width: 8}, {Title: "Pending", Width: 8}, {Title: "Instances", Width: 9}}
+func clusterColumnsForWidth(width int) []table.Column {
+	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Cluster", Min: 18, Weight: 4, Max: 56}, {Title: "Status", Min: 8, Weight: 1, Max: 12}, {Title: "Services", Min: 8}, {Title: "Running", Min: 8}, {Title: "Pending", Min: 8}, {Title: "Instances", Min: 9}})
 }
-func serviceColumns() []table.Column {
-	return []table.Column{{Title: "Service", Width: 28}, {Title: "Status", Width: 10}, {Title: "Task definition", Width: 22}, {Title: "Tasks", Width: 16}, {Title: "Created", Width: 16}}
+func serviceColumnsForWidth(width int) []table.Column {
+	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Service", Min: 18, Weight: 4, Max: 48}, {Title: "Status", Min: 8, Weight: 1, Max: 12}, {Title: "Task definition", Min: 18, Weight: 3, Max: 44}, {Title: "Tasks", Min: 10, Weight: 1, Max: 18}, {Title: "Created", Min: 16}})
 }
-func taskColumns() []table.Column {
-	return []table.Column{{Title: "Task", Width: 13}, {Title: "Last", Width: 9}, {Title: "Desired", Width: 8}, {Title: "Task definition", Width: 18}, {Title: "IP", Width: 15}, {Title: "Created", Width: 12}, {Title: "Started", Width: 12}}
+func taskColumnsForWidth(width int) []table.Column {
+	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Task", Min: 12, Weight: 1, Max: 20}, {Title: "Last", Min: 8, Weight: 1, Max: 14}, {Title: "Desired", Min: 8, Weight: 1, Max: 14}, {Title: "Task definition", Min: 16, Weight: 3, Max: 42}, {Title: "IP", Min: 12, Weight: 1, Max: 15}, {Title: "Created", Min: 12, Weight: 1, Max: 16}, {Title: "Started", Min: 12, Weight: 1, Max: 16}})
 }
+func clusterColumns() []table.Column { return clusterColumnsForWidth(96) }
+func serviceColumns() []table.Column { return serviceColumnsForWidth(96) }
+func taskColumns() []table.Column    { return taskColumnsForWidth(112) }
 
 func textInputKey(msg tea.KeyMsg) bool {
 	switch msg.Type {
@@ -68,6 +72,28 @@ func taskCount(s domainecs.Service) string {
 		base += fmt.Sprintf(" (+%d pending)", s.PendingCount)
 	}
 	return base
+}
+
+func (p *ECSPage) configureClusterTable(width, rows int) {
+	rows = max(5, rows)
+	p.clusterPaginator.PerPage = rows
+	p.clusterTable.SetHeight(rows + 1)
+	p.clusterTable.SetWidth(width)
+	p.clusterTable.SetColumns(clusterColumnsForWidth(width))
+}
+func (p *ECSPage) configureServiceTable(width, rows int) {
+	rows = max(5, rows)
+	p.servicePaginator.PerPage = rows
+	p.serviceTable.SetHeight(rows + 1)
+	p.serviceTable.SetWidth(width)
+	p.serviceTable.SetColumns(serviceColumnsForWidth(width))
+}
+func (p *ECSPage) configureTaskTable(width, rows int) {
+	rows = max(5, rows)
+	p.taskPaginator.PerPage = rows
+	p.taskTable.SetHeight(rows + 1)
+	p.taskTable.SetWidth(width)
+	p.taskTable.SetColumns(taskColumnsForWidth(width))
 }
 
 func (p *ECSPage) filteredClusters() []domainecs.Cluster {
@@ -126,9 +152,10 @@ func (p *ECSPage) syncClusterTable() {
 	if p.clusterIndex < start || p.clusterIndex >= end {
 		p.clusterIndex = start
 	}
+	cols := p.clusterTable.Columns()
 	rows := []table.Row{}
 	for _, c := range items[start:end] {
-		rows = append(rows, table.Row{c.Name, c.Status, fmt.Sprint(c.ActiveServicesCount), fmt.Sprint(c.RunningTasksCount), fmt.Sprint(c.PendingTasksCount), fmt.Sprint(c.RegisteredInstanceCount)})
+		rows = append(rows, table.Row{tableutil.Truncate(c.Name, cols[0].Width), tableutil.Truncate(c.Status, cols[1].Width), fmt.Sprint(c.ActiveServicesCount), fmt.Sprint(c.RunningTasksCount), fmt.Sprint(c.PendingTasksCount), fmt.Sprint(c.RegisteredInstanceCount)})
 	}
 	p.clusterTable.SetRows(rows)
 	p.clusterTable.SetCursor(max(0, p.clusterIndex-start))
@@ -149,9 +176,10 @@ func (p *ECSPage) syncServiceTable() {
 	if p.serviceIndex < start || p.serviceIndex >= end {
 		p.serviceIndex = start
 	}
+	cols := p.serviceTable.Columns()
 	rows := []table.Row{}
 	for _, s := range items[start:end] {
-		rows = append(rows, table.Row{s.Name, s.Status, value(s.TaskDefinition), taskCount(s), timeText(s.CreatedAt)})
+		rows = append(rows, table.Row{tableutil.Truncate(s.Name, cols[0].Width), tableutil.Truncate(s.Status, cols[1].Width), tableutil.Truncate(value(s.TaskDefinition), cols[2].Width), tableutil.Truncate(taskCount(s), cols[3].Width), timeText(s.CreatedAt)})
 	}
 	p.serviceTable.SetRows(rows)
 	p.serviceTable.SetCursor(max(0, p.serviceIndex-start))
@@ -172,9 +200,10 @@ func (p *ECSPage) syncTaskTable() {
 	if p.taskIndex < start || p.taskIndex >= end {
 		p.taskIndex = start
 	}
+	cols := p.taskTable.Columns()
 	rows := []table.Row{}
 	for _, t := range items[start:end] {
-		rows = append(rows, table.Row{shortText(t.ID, 13), t.LastStatus, t.DesiredStatus, value(t.TaskDefinition), value(t.PrivateIP), tableTimeText(t.CreatedAt), tableTimeText(t.StartedAt)})
+		rows = append(rows, table.Row{tableutil.Truncate(t.ID, cols[0].Width), tableutil.Truncate(t.LastStatus, cols[1].Width), tableutil.Truncate(t.DesiredStatus, cols[2].Width), tableutil.Truncate(value(t.TaskDefinition), cols[3].Width), tableutil.Truncate(value(t.PrivateIP), cols[4].Width), tableTimeText(t.CreatedAt), tableTimeText(t.StartedAt)})
 	}
 	p.taskTable.SetRows(rows)
 	p.taskTable.SetCursor(max(0, p.taskIndex-start))

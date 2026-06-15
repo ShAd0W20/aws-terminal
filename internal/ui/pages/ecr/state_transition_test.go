@@ -109,7 +109,7 @@ func TestLocalImageListWindowFollowsSelection(t *testing.T) {
 	}
 	p.localIndex = 20
 
-	view := strings.Join(p.localLines(20), "\n")
+	view := strings.Join(p.localLines(120, 20, 0), "\n")
 	if !strings.Contains(view, "image:20") {
 		t.Fatalf("selected image was not visible: %s", view)
 	}
