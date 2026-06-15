@@ -2,9 +2,12 @@ package ecs
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"aws-terminal/internal/ui/styles"
 	"aws-terminal/internal/ui/tableutil"
@@ -35,6 +38,7 @@ func (p *ECSPage) View(state State, width, height int) string {
 	case ecsStageServiceDetail:
 		lines = append(lines, p.serviceDetailLines()...)
 	case ecsStageTaskDetail:
+		p.configureLogViewport(width, height, len(lines))
 		lines = append(lines, p.taskDetailLines()...)
 	}
 	return styles.RenderBox(styles.PanelStyle, width, height, strings.Join(lines, "\n"))
@@ -45,6 +49,11 @@ func (p *ECSPage) ShortHelp() []key.Binding {
 		return []key.Binding{ecsUpKey, ecsDownKey, ecsPagePrevKey, ecsPageNextKey, ecsEnterKey, ecsSearchKey, ecsRefreshKey, ecsTabHelpKey}
 	case ecsStageResources:
 		return []key.Binding{ecsUpKey, ecsDownKey, ecsPagePrevKey, ecsPageNextKey, ecsPrevTabKey, ecsNextTabKey, ecsEnterKey, ecsSearchKey, ecsRefreshKey, ecsBackKey, ecsTabHelpKey}
+	case ecsStageTaskDetail:
+		if p.taskDetailTab == taskDetailTabLogs {
+			return []key.Binding{ecsPrevTabKey, ecsNextTabKey, ecsPrevContainerKey, ecsNextContainerKey, ecsUpKey, ecsDownKey, ecsBackKey, ecsTabHelpKey}
+		}
+		return []key.Binding{ecsPrevTabKey, ecsNextTabKey, ecsBackKey, ecsTabHelpKey}
 	default:
 		return []key.Binding{ecsBackKey, ecsTabHelpKey}
 	}
@@ -194,7 +203,170 @@ func (p *ECSPage) serviceDetailLines() []string {
 	return lines
 }
 
-func (p *ECSPage) taskDetailLines() []string { return p.taskOverviewLines() }
+func (p *ECSPage) taskDetailLines() []string {
+	if p.taskDetailTab == taskDetailTabLogs {
+		return p.taskLogLines()
+	}
+	return append(p.taskTabHeaderLines(), p.taskOverviewLines()...)
+}
+
+func (p *ECSPage) taskTabHeaderLines() []string {
+	if p.taskDetailTab == taskDetailTabLogs {
+		return []string{styles.MutedStyle.Render("Tabs: Overview [ Logs ]")}
+	}
+	return []string{styles.MutedStyle.Render("Tabs: [ Overview ] Logs")}
+}
+
+func (p *ECSPage) configureLogViewport(width, height, usedLines int) {
+	viewportWidth := max(30, width-styles.PanelStyle.GetHorizontalFrameSize()-8)
+	viewportHeight := max(5, height-usedLines-10)
+	if p.logViewport.Width != viewportWidth || p.logViewport.Height != viewportHeight {
+		p.logViewport.Width = viewportWidth
+		p.logViewport.Height = viewportHeight
+		p.renderLogViewportContent()
+	}
+}
+
+func (p *ECSPage) taskLogLines() []string {
+	lines := p.taskTabHeaderLines()
+	target := p.selectedLogTarget()
+	containerLabel := value(target.ContainerName)
+	if len(p.logTargets) > 0 {
+		containerLabel = fmt.Sprintf("%s (%d/%d)", value(target.ContainerName), p.logContainerIndex+1, len(p.logTargets))
+	}
+	state := "stopped"
+	if p.logStreaming {
+		state = "streaming"
+	}
+	lines = append(lines, "", styles.MutedStyle.Render("Task logs"), fmt.Sprintf("Container: %s  •  %s", containerLabel, state))
+	if p.logTargetsLoading {
+		return append(lines, styles.StatusStyle.Render(p.spinner.View()+" Resolving log configuration..."))
+	}
+	if p.logTargetsErr != "" {
+		return append(lines, styles.ErrorStyle.Render(p.logTargetsErr))
+	}
+	if len(p.logTargets) == 0 {
+		return append(lines, styles.MutedStyle.Render("No containers reported for this task."))
+	}
+	if !target.Supported {
+		return append(lines, styles.MutedStyle.Render(value(target.Message)))
+	}
+	if p.logEventsErr != "" {
+		lines = append(lines, styles.ErrorStyle.Render(p.logEventsErr))
+	}
+	if p.logEventsLoading && len(p.logEvents) == 0 {
+		lines = append(lines, styles.StatusStyle.Render(p.spinner.View()+" Loading logs..."))
+	}
+	if len(p.logEvents) == 0 && !p.logEventsLoading && p.logEventsErr == "" {
+		lines = append(lines, styles.MutedStyle.Render("No log events in the last 15 minutes yet."))
+	}
+	lines = append(lines, p.logViewport.View(), styles.MutedStyle.Render("Scroll ↑/↓ or k/j · switch tabs [/]: Overview/Logs · containers ctrl+h/ctrl+l · b/Esc back"))
+	return lines
+}
+
+func (p *ECSPage) renderLogViewportContent() {
+	atBottom := p.logViewport.AtBottom()
+	width := p.logViewport.Width
+	if width <= 0 {
+		width = 80
+	}
+	rows := make([]string, 0, len(p.logEvents))
+	for _, event := range p.logEvents {
+		rows = append(rows, renderLogEvent(event.Timestamp.Local().Format("15:04:05"), event.Message, width))
+	}
+	p.logViewport.SetContent(strings.Join(rows, "\n"))
+	if atBottom || p.logViewport.YOffset >= max(0, p.logViewport.TotalLineCount()-p.logViewport.Height-2) {
+		p.logViewport.GotoBottom()
+	}
+}
+
+func renderLogEvent(timestamp, message string, width int) string {
+	prefix := styles.MutedStyle.Render(timestamp + " ")
+	message = strings.TrimRight(message, "\n")
+	wrapped := ansi.Wrap(colorizeLogSeverityMarker(message), max(10, width-9), "")
+	parts := strings.Split(wrapped, "\n")
+	if len(parts) == 0 {
+		return prefix
+	}
+	parts[0] = prefix + parts[0]
+	indent := strings.Repeat(" ", 9)
+	for i := 1; i < len(parts); i++ {
+		parts[i] = indent + parts[i]
+	}
+	return strings.Join(parts, "\n")
+}
+
+var logLevelPatterns = map[string]*regexp.Regexp{
+	"error": regexp.MustCompile(`(?i)^\s*(?:\[?error\]?\b|level[=:]\s*"?error"?|"level"\s*:\s*"error")`),
+	"warn":  regexp.MustCompile(`(?i)^\s*(?:\[?warn(?:ing)?\]?\b|level[=:]\s*"?warn(?:ing)?"?|"level"\s*:\s*"warn(?:ing)?")`),
+	"info":  regexp.MustCompile(`(?i)^\s*(?:\[?info\]?\b|level[=:]\s*"?info"?|"level"\s*:\s*"info")`),
+	"debug": regexp.MustCompile(`(?i)^\s*(?:\[?debug\]?\b|level[=:]\s*"?debug"?|"level"\s*:\s*"debug")`),
+}
+
+func detectLogSeverity(message string) string {
+	level, _, _ := findLogSeverityMarker(message)
+	return level
+}
+
+func colorizeLogSeverityMarker(message string) string {
+	level, start, end := findLogSeverityMarker(message)
+	if level == "" {
+		return message
+	}
+	return message[:start] + severityStyle(level).Render(message[start:end]) + message[end:]
+}
+
+func findLogSeverityMarker(message string) (string, int, int) {
+	prefix := stripLeadingLogTimestamp(message)
+	if len(prefix) > 80 {
+		prefix = prefix[:80]
+	}
+	baseOffset := strings.Index(message, prefix)
+	if baseOffset < 0 {
+		baseOffset = len(message) - len(strings.TrimLeft(message, " \t"))
+	}
+	for level, pattern := range logLevelPatterns {
+		if loc := pattern.FindStringIndex(prefix); loc != nil {
+			return level, baseOffset + loc[0], baseOffset + loc[1]
+		}
+	}
+	return "", 0, 0
+}
+
+func stripLeadingLogTimestamp(message string) string {
+	message = strings.TrimSpace(message)
+	fields := strings.Fields(message)
+	if len(fields) == 0 {
+		return message
+	}
+	first := fields[0]
+	if looksLikeLogTimestamp(first) && len(fields) > 1 {
+		return strings.TrimSpace(strings.TrimPrefix(message, first))
+	}
+	return message
+}
+
+func looksLikeLogTimestamp(value string) bool {
+	if len(value) < len("2006-01-02T15:04:05") {
+		return false
+	}
+	return len(value) >= 19 && value[4] == '-' && value[7] == '-' && (value[10] == 'T' || value[10] == ' ')
+}
+
+func severityStyle(level string) lipgloss.Style {
+	switch level {
+	case "error":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	case "warn":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	case "info":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("86"))
+	case "debug":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("111"))
+	default:
+		return lipgloss.NewStyle()
+	}
+}
 
 func (p *ECSPage) taskOverviewLines() []string {
 	t := p.selectedTask

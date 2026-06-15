@@ -81,3 +81,26 @@ type Attachment struct {
 	MAC       string
 	PrivateIP string
 }
+
+type LogTarget struct {
+	ContainerName string
+	LogGroup      string
+	LogStream     string
+	StreamPrefix  string
+	TaskID        string
+	Region        string
+	Supported     bool
+	Message       string
+}
+
+type LogEvent struct {
+	ID        string
+	Timestamp time.Time
+	Message   string
+}
+
+type LogEventsPage struct {
+	Events           []LogEvent
+	NextForwardToken string
+	LogStream        string
+}

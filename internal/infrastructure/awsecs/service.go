@@ -2,14 +2,18 @@ package awsecs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awslogssdk "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	awsec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	awsecsdk "github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/aws/smithy-go"
 
 	appsecs "aws-terminal/internal/application/ecs"
 	domainecs "aws-terminal/internal/domain/ecs"
@@ -119,6 +123,104 @@ func (s *Service) ListTasks(ctx context.Context, profileName, region, clusterARN
 		return nil, err
 	}
 	return tasks, nil
+}
+
+func (s *Service) DescribeTaskLogTargets(ctx context.Context, profileName, region, taskDefinitionARN, taskID string) ([]domainecs.LogTarget, error) {
+	ctx, cancel := awsclients.WithTimeout(ctx, s.clients.OperationTimeout())
+	defer cancel()
+	client, err := s.client(ctx, profileName, region)
+	if err != nil {
+		return nil, err
+	}
+	out, err := client.DescribeTaskDefinition(ctx, &awsecsdk.DescribeTaskDefinitionInput{TaskDefinition: aws.String(strings.TrimSpace(taskDefinitionARN))})
+	if err != nil {
+		return nil, err
+	}
+	if out.TaskDefinition == nil {
+		return nil, fmt.Errorf("task definition not found")
+	}
+	return logTargetsFromTaskDefinition(out.TaskDefinition.ContainerDefinitions, strings.TrimSpace(taskID)), nil
+}
+
+func (s *Service) FetchTaskLogEvents(ctx context.Context, profileName, region string, target domainecs.LogTarget, nextToken string, lookback time.Duration, limit int32) (domainecs.LogEventsPage, error) {
+	logsRegion := strings.TrimSpace(target.Region)
+	if logsRegion == "" {
+		logsRegion = region
+	}
+	ctx, cancel := awsclients.WithTimeout(ctx, s.clients.OperationTimeout())
+	defer cancel()
+	client, err := s.clients.CloudWatchLogs(ctx, profileName, logsRegion)
+	if err != nil {
+		return domainecs.LogEventsPage{}, fmt.Errorf("load CloudWatch Logs client: %w", err)
+	}
+	input := &awslogssdk.GetLogEventsInput{
+		LogGroupName:  aws.String(strings.TrimSpace(target.LogGroup)),
+		LogStreamName: aws.String(strings.TrimSpace(target.LogStream)),
+		Limit:         aws.Int32(limit),
+		StartFromHead: aws.Bool(true),
+	}
+	if strings.TrimSpace(nextToken) != "" {
+		input.NextToken = aws.String(strings.TrimSpace(nextToken))
+	} else if lookback > 0 {
+		input.StartTime = aws.Int64(time.Now().Add(-lookback).UnixMilli())
+	}
+	page, err := getLogEvents(ctx, client, input, strings.TrimSpace(target.LogStream))
+	if err == nil {
+		return page, nil
+	}
+	if !isResourceNotFound(err) {
+		return domainecs.LogEventsPage{}, err
+	}
+	resolvedStream, resolveErr := s.findTaskLogStream(ctx, client, target)
+	if resolveErr != nil || resolvedStream == "" || resolvedStream == strings.TrimSpace(target.LogStream) {
+		return domainecs.LogEventsPage{}, err
+	}
+	input.LogStreamName = aws.String(resolvedStream)
+	input.NextToken = nil
+	if lookback > 0 {
+		input.StartTime = aws.Int64(time.Now().Add(-lookback).UnixMilli())
+	}
+	return getLogEvents(ctx, client, input, resolvedStream)
+}
+
+func getLogEvents(ctx context.Context, client *awslogssdk.Client, input *awslogssdk.GetLogEventsInput, logStream string) (domainecs.LogEventsPage, error) {
+	out, err := client.GetLogEvents(ctx, input)
+	if err != nil {
+		return domainecs.LogEventsPage{}, err
+	}
+	page := domainecs.LogEventsPage{NextForwardToken: aws.ToString(out.NextForwardToken), LogStream: logStream}
+	for _, event := range out.Events {
+		message := aws.ToString(event.Message)
+		timestamp := aws.ToInt64(event.Timestamp)
+		id := fmt.Sprintf("%d/%d/%s", timestamp, aws.ToInt64(event.IngestionTime), message)
+		page.Events = append(page.Events, domainecs.LogEvent{ID: id, Timestamp: time.UnixMilli(timestamp), Message: message})
+	}
+	return page, nil
+}
+
+func isResourceNotFound(err error) bool {
+	var apiErr smithy.APIError
+	return err != nil && errors.As(err, &apiErr) && apiErr.ErrorCode() == "ResourceNotFoundException"
+}
+
+func (s *Service) findTaskLogStream(ctx context.Context, client *awslogssdk.Client, target domainecs.LogTarget) (string, error) {
+	for _, prefix := range logStreamSearchPrefixes(target) {
+		streams := []string{}
+		p := awslogssdk.NewDescribeLogStreamsPaginator(client, &awslogssdk.DescribeLogStreamsInput{LogGroupName: aws.String(strings.TrimSpace(target.LogGroup)), LogStreamNamePrefix: aws.String(prefix)})
+		for p.HasMorePages() {
+			page, err := p.NextPage(ctx)
+			if err != nil {
+				return "", err
+			}
+			for _, stream := range page.LogStreams {
+				streams = append(streams, aws.ToString(stream.LogStreamName))
+			}
+			if match := matchingTaskLogStream(streams, target); match != "" {
+				return match, nil
+			}
+		}
+	}
+	return "", nil
 }
 
 var _ appsecs.API = (*Service)(nil)
@@ -264,6 +366,107 @@ func attachmentFromSDK(a ecstypes.Attachment) domainecs.Attachment {
 		}
 	}
 	return att
+}
+
+func logTargetsFromTaskDefinition(containers []ecstypes.ContainerDefinition, taskID string) []domainecs.LogTarget {
+	taskID = strings.Trim(strings.TrimSpace(taskID), "/")
+	targets := make([]domainecs.LogTarget, 0, len(containers))
+	for _, c := range containers {
+		name := aws.ToString(c.Name)
+		target := domainecs.LogTarget{ContainerName: name, TaskID: taskID, Supported: false, Message: fmt.Sprintf("No awslogs CloudWatch Logs configuration found for container %s.", valueOrFallback(name, "unknown"))}
+		if c.LogConfiguration == nil || c.LogConfiguration.LogDriver != ecstypes.LogDriverAwslogs {
+			targets = append(targets, target)
+			continue
+		}
+		options := c.LogConfiguration.Options
+		group := strings.TrimSpace(options["awslogs-group"])
+		logsRegion := strings.TrimSpace(options["awslogs-region"])
+		prefix := strings.TrimSpace(options["awslogs-stream-prefix"])
+		switch {
+		case group == "":
+			target.Message = fmt.Sprintf("Container %s uses awslogs but has no awslogs-group.", valueOrFallback(name, "unknown"))
+		case prefix == "":
+			target.Message = fmt.Sprintf("Container %s uses awslogs but has no awslogs-stream-prefix.", valueOrFallback(name, "unknown"))
+		case taskID == "":
+			target.Message = fmt.Sprintf("Container %s uses awslogs but task ID is missing.", valueOrFallback(name, "unknown"))
+		default:
+			target.LogGroup = group
+			target.Region = logsRegion
+			target.StreamPrefix = prefix
+			target.LogStream = awslogsStreamName(prefix, name, taskID)
+			target.Supported = true
+			target.Message = ""
+		}
+		targets = append(targets, target)
+	}
+	return targets
+}
+
+func awslogsStreamName(prefix, containerName, taskID string) string {
+	prefix = strings.TrimRight(strings.TrimSpace(prefix), "/")
+	containerName = strings.Trim(strings.TrimSpace(containerName), "/")
+	taskID = strings.Trim(strings.TrimSpace(taskID), "/")
+	return prefix + "/" + containerName + "/" + taskID
+}
+
+func logStreamSearchPrefixes(target domainecs.LogTarget) []string {
+	seen := map[string]struct{}{}
+	add := func(value string, out *[]string) {
+		value = strings.TrimRight(strings.TrimSpace(value), "/")
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		*out = append(*out, value)
+	}
+	prefixes := []string{}
+	add(target.LogStream, &prefixes)
+	if target.StreamPrefix != "" && target.ContainerName != "" {
+		add(strings.TrimRight(strings.TrimSpace(target.StreamPrefix), "/")+"/"+strings.Trim(strings.TrimSpace(target.ContainerName), "/"), &prefixes)
+	}
+	add(target.StreamPrefix, &prefixes)
+	return prefixes
+}
+
+func matchingTaskLogStream(streams []string, target domainecs.LogTarget) string {
+	exact := strings.TrimSpace(target.LogStream)
+	taskID := strings.Trim(strings.TrimSpace(target.TaskID), "/")
+	containerName := strings.Trim(strings.TrimSpace(target.ContainerName), "/")
+	for _, stream := range streams {
+		if exact != "" && stream == exact {
+			return stream
+		}
+	}
+	if taskID == "" {
+		return ""
+	}
+	containerSegment := "/" + containerName + "/"
+	for _, stream := range streams {
+		if containerName != "" && strings.Contains(stream, containerSegment) && strings.HasSuffix(stream, "/"+taskID) {
+			return stream
+		}
+	}
+	for _, stream := range streams {
+		if strings.HasSuffix(stream, "/"+taskID) || stream == taskID {
+			return stream
+		}
+	}
+	for _, stream := range streams {
+		if strings.Contains(stream, taskID) {
+			return stream
+		}
+	}
+	return ""
+}
+
+func valueOrFallback(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
 }
 
 func taskDefinitionName(arn string) string {

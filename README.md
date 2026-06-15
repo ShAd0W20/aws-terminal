@@ -29,6 +29,7 @@ A keyboard-first terminal UI for working with AWS resources from your local shel
 - Static-site-oriented S3 upload metadata, including frontend content-type fallbacks and cache-control presets.
 - List CloudFront distributions and create/poll invalidations.
 - List/search private ECR repositories, create repositories, and push local Docker images.
+- Browse ECS clusters, services, and running tasks with compact service/task detail views that highlight status, IP/network placement, containers, failure reasons, and CloudWatch `awslogs` task logs.
 - Bubble Tea powered TUI with keyboard navigation and cancellable long-running workflows.
 
 ## Install
@@ -179,6 +180,17 @@ Useful keys:
 
 Docker must be running locally for image discovery and push workflows.
 
+### ECS clusters, services, and tasks
+
+- List ECS clusters for the active profile/region.
+- Drill into a cluster to browse services and non-stopped tasks.
+- Search clusters, services, and tasks from the page workflow.
+- Open service details to see deployment health, desired/running/pending counts, network configuration, runtime settings, and identifiers.
+- Open task details to quickly see status, health, private IP, availability zone, runtime, connectivity, containers, and stopped/failure reasons.
+- Switch task detail tabs between **Overview** and **Logs**. Logs support ECS `awslogs` CloudWatch Logs streams, load the last 15 minutes initially, and continue polling while the Logs tab is actively viewed.
+- In the Logs tab, scroll through the viewport with `↑`/`↓` or `k`/`j`, switch task-detail tabs with `[`/`]`, and switch log containers with `ctrl+h`/`ctrl+l`.
+- Required IAM permissions for task logs include ECS task-definition read access, such as `ecs:DescribeTaskDefinition`, and CloudWatch Logs access, such as `logs:GetLogEvents`.
+
 ## Safety model
 
 `aws-terminal` is intended to make AWS operations easier without hiding important state transitions:
@@ -226,6 +238,7 @@ internal/ui/components                   # shared TUI components
 internal/ui/pages/s3                     # S3 workflow page
 internal/ui/pages/cloudfront             # CloudFront workflow page
 internal/ui/pages/ecr                    # ECR workflow page
+internal/ui/pages/ecs                    # ECS cluster/service/task browser page
 internal/ui/styles                       # shared Lip Gloss theme helpers
 ```
 

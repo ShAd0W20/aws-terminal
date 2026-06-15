@@ -11,6 +11,7 @@ import (
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	awssdkconfig "github.com/aws/aws-sdk-go-v2/config"
 	awscloudfrontsdk "github.com/aws/aws-sdk-go-v2/service/cloudfront"
+	awscloudwatchlogssdk "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	awsec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
 	awsecrsdk "github.com/aws/aws-sdk-go-v2/service/ecr"
 	awsecssdk "github.com/aws/aws-sdk-go-v2/service/ecs"
@@ -68,15 +69,16 @@ func normalizeOptions(options Options) Options {
 }
 
 type Factory struct {
-	opts              Options
-	mu                sync.RWMutex
-	configs           map[string]aws.Config
-	s3Clients         map[string]*awss3sdk.Client
-	cloudFrontClients map[string]*awscloudfrontsdk.Client
-	ecrClients        map[string]*awsecrsdk.Client
-	ecsClients        map[string]*awsecssdk.Client
-	ec2Clients        map[string]*awsec2sdk.Client
-	stsClients        map[string]*sts.Client
+	opts                  Options
+	mu                    sync.RWMutex
+	configs               map[string]aws.Config
+	s3Clients             map[string]*awss3sdk.Client
+	cloudFrontClients     map[string]*awscloudfrontsdk.Client
+	cloudWatchLogsClients map[string]*awscloudwatchlogssdk.Client
+	ecrClients            map[string]*awsecrsdk.Client
+	ecsClients            map[string]*awsecssdk.Client
+	ec2Clients            map[string]*awsec2sdk.Client
+	stsClients            map[string]*sts.Client
 }
 
 func NewFactory() *Factory {
@@ -85,14 +87,15 @@ func NewFactory() *Factory {
 
 func NewFactoryWithOptions(options Options) *Factory {
 	return &Factory{
-		opts:              normalizeOptions(options),
-		configs:           map[string]aws.Config{},
-		s3Clients:         map[string]*awss3sdk.Client{},
-		cloudFrontClients: map[string]*awscloudfrontsdk.Client{},
-		ecrClients:        map[string]*awsecrsdk.Client{},
-		ecsClients:        map[string]*awsecssdk.Client{},
-		ec2Clients:        map[string]*awsec2sdk.Client{},
-		stsClients:        map[string]*sts.Client{},
+		opts:                  normalizeOptions(options),
+		configs:               map[string]aws.Config{},
+		s3Clients:             map[string]*awss3sdk.Client{},
+		cloudFrontClients:     map[string]*awscloudfrontsdk.Client{},
+		cloudWatchLogsClients: map[string]*awscloudwatchlogssdk.Client{},
+		ecrClients:            map[string]*awsecrsdk.Client{},
+		ecsClients:            map[string]*awsecssdk.Client{},
+		ec2Clients:            map[string]*awsec2sdk.Client{},
+		stsClients:            map[string]*sts.Client{},
 	}
 }
 
@@ -232,6 +235,34 @@ func (f *Factory) CloudFront(ctx context.Context, profileName, region string) (*
 		return existing, nil
 	}
 	f.cloudFrontClients[key] = client
+	f.mu.Unlock()
+	return client, nil
+}
+
+func (f *Factory) CloudWatchLogs(ctx context.Context, profileName, region string) (*awscloudwatchlogssdk.Client, error) {
+	if f == nil {
+		f = Default()
+	}
+	key := CacheKey(profileName, region)
+	f.mu.RLock()
+	client, ok := f.cloudWatchLogsClients[key]
+	f.mu.RUnlock()
+	if ok {
+		return client, nil
+	}
+
+	cfg, err := f.Config(ctx, profileName, region)
+	if err != nil {
+		return nil, err
+	}
+	client = awscloudwatchlogssdk.NewFromConfig(cfg)
+
+	f.mu.Lock()
+	if existing, ok := f.cloudWatchLogsClients[key]; ok {
+		f.mu.Unlock()
+		return existing, nil
+	}
+	f.cloudWatchLogsClients[key] = client
 	f.mu.Unlock()
 	return client, nil
 }

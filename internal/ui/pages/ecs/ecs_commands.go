@@ -2,6 +2,7 @@ package ecs
 
 import (
 	"context"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -41,6 +42,40 @@ func (p *ECSPage) loadTasksCmd(profile, region, clusterARN string) tea.Cmd {
 		return tasksLoadedMsg{clusterARN: clusterARN, tasks: tasks, err: err}
 	}
 }
+func (p *ECSPage) loadLogTargetsCmd(profile, region, taskDefinitionARN, taskID string) tea.Cmd {
+	if p.logsCancel != nil {
+		p.logsCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	p.logsCancel = cancel
+	return func() tea.Msg {
+		targets, err := p.service.DescribeTaskLogTargets(ctx, profile, region, taskDefinitionARN, taskID)
+		return taskLogTargetsLoadedMsg{taskDefinitionARN: taskDefinitionARN, taskID: taskID, targets: targets, err: err}
+	}
+}
+
+func (p *ECSPage) loadLogEventsCmd(profile, region string, target domainecs.LogTarget, nextToken string, lookback time.Duration, limit int32) tea.Cmd {
+	if p.logsCancel != nil {
+		p.logsCancel()
+	}
+	taskARN := p.selectedTask.ARN
+	ctx, cancel := context.WithCancel(context.Background())
+	p.logsCancel = cancel
+	return func() tea.Msg {
+		page, err := p.service.FetchTaskLogEvents(ctx, profile, region, target, nextToken, lookback, limit)
+		return taskLogEventsLoadedMsg{taskARN: taskARN, containerName: target.ContainerName, page: page, err: err}
+	}
+}
+
+func (p *ECSPage) logPollTickCmd(taskARN, containerName string, delay time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		<-timer.C
+		return taskLogPollTickMsg{taskARN: taskARN, containerName: containerName}
+	}
+}
+
 func (p *ECSPage) cancelResourceLoads() {
 	if p.servicesCancel != nil {
 		p.servicesCancel()
@@ -50,6 +85,30 @@ func (p *ECSPage) cancelResourceLoads() {
 		p.tasksCancel()
 		p.tasksCancel = nil
 	}
+	p.stopLogStreaming()
+}
+
+func (p *ECSPage) stopLogStreaming() {
+	p.logStreaming = false
+	p.logEventsLoading = false
+	p.logTargetsLoading = false
+	if p.logsCancel != nil {
+		p.logsCancel()
+		p.logsCancel = nil
+	}
+}
+
+func (p *ECSPage) resetLogState() {
+	p.stopLogStreaming()
+	p.logTargetsErr = ""
+	p.logTargets = nil
+	p.logContainerIndex = 0
+	p.logEventsErr = ""
+	p.logEvents = nil
+	p.logSeenEventIDs = map[string]struct{}{}
+	p.logNextToken = ""
+	p.logViewport.SetContent("")
+	p.logViewport.GotoBottom()
 }
 func (p *ECSPage) resetForSession() {
 	if p.clustersCancel != nil {
@@ -66,5 +125,9 @@ func (p *ECSPage) resetForSession() {
 	p.selectedCluster = domainecs.Cluster{}
 	p.services = nil
 	p.tasks = nil
+	p.selectedTask = domainecs.Task{}
+	p.taskDetailTab = taskDetailTabOverview
+	p.logTargetsByTaskDefinition = map[string][]domainecs.LogTarget{}
+	p.resetLogState()
 	p.searchInput.SetValue("")
 }

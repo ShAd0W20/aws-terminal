@@ -3,6 +3,7 @@ package ecs
 import (
 	"context"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -20,6 +21,12 @@ func (fakeECSService) ListServices(context.Context, string, string, string) ([]d
 }
 func (fakeECSService) ListTasks(context.Context, string, string, string) ([]domainecs.Task, error) {
 	return nil, nil
+}
+func (fakeECSService) DescribeTaskLogTargets(context.Context, string, string, string, string) ([]domainecs.LogTarget, error) {
+	return []domainecs.LogTarget{{ContainerName: "app", LogGroup: "group", LogStream: "prefix/app/task", Supported: true}, {ContainerName: "sidecar", Supported: false, Message: "No awslogs CloudWatch Logs configuration found for container sidecar."}}, nil
+}
+func (fakeECSService) FetchTaskLogEvents(context.Context, string, string, domainecs.LogTarget, string, time.Duration, int32) (domainecs.LogEventsPage, error) {
+	return domainecs.LogEventsPage{Events: []domainecs.LogEvent{{ID: "1", Timestamp: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC), Message: "INFO hello"}}, NextForwardToken: "next"}, nil
 }
 
 func testState() State {
@@ -54,6 +61,63 @@ func TestSelectingClusterStartsServicesAndTasksLoads(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("expected load command")
+	}
+}
+
+func TestTaskDetailTabsStartAndStopLogStreaming(t *testing.T) {
+	p := NewECSPage(fakeECSService{})
+	p.stage = ecsStageTaskDetail
+	p.selectedTask = domainecs.Task{ID: "task", ARN: "task-arn", TaskDefinitionARN: "td", Containers: []domainecs.Container{{Name: "app"}}}
+	cmd := p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")}, testState())
+	if p.taskDetailTab != taskDetailTabLogs {
+		t.Fatalf("task detail tab = %v", p.taskDetailTab)
+	}
+	if !p.logTargetsLoading || !p.logStreaming || cmd == nil {
+		t.Fatalf("expected log target load and streaming state")
+	}
+	p.Update(taskLogTargetsLoadedMsg{taskDefinitionARN: "td", taskID: "task", targets: []domainecs.LogTarget{{ContainerName: "app", Supported: true, LogGroup: "group", LogStream: "stream"}}}, testState())
+	p.Update(taskLogEventsLoadedMsg{taskARN: "task-arn", containerName: "app", page: domainecs.LogEventsPage{Events: []domainecs.LogEvent{{ID: "1", Timestamp: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC), Message: "INFO hello"}}, NextForwardToken: "next", LogStream: "resolved-stream"}}, testState())
+	if len(p.logEvents) != 1 || p.logNextToken != "next" {
+		t.Fatalf("log events not appended: events=%d token=%q", len(p.logEvents), p.logNextToken)
+	}
+	if p.logTargets[0].LogStream != "resolved-stream" {
+		t.Fatalf("log stream = %q, want resolved-stream", p.logTargets[0].LogStream)
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[")}, testState())
+	if p.taskDetailTab != taskDetailTabOverview || p.logStreaming {
+		t.Fatalf("leaving logs should stop streaming, tab=%v streaming=%v", p.taskDetailTab, p.logStreaming)
+	}
+}
+
+func TestLogContainerSwitchResetsEvents(t *testing.T) {
+	p := NewECSPage(fakeECSService{})
+	p.stage = ecsStageTaskDetail
+	p.taskDetailTab = taskDetailTabLogs
+	p.selectedTask = domainecs.Task{ID: "task", ARN: "task-arn", TaskDefinitionARN: "td"}
+	p.logTargets = []domainecs.LogTarget{{ContainerName: "app", Supported: true, LogGroup: "group", LogStream: "app"}, {ContainerName: "sidecar", Supported: false, Message: "no logs"}}
+	p.logEvents = []domainecs.LogEvent{{ID: "1", Message: "INFO old"}}
+	p.logNextToken = "next"
+	p.Update(tea.KeyMsg{Type: tea.KeyCtrlL}, testState())
+	if p.logContainerIndex != 1 {
+		t.Fatalf("container index = %d", p.logContainerIndex)
+	}
+	if len(p.logEvents) != 0 || p.logNextToken != "" {
+		t.Fatalf("switch should reset log events/token")
+	}
+}
+
+func TestLogPollingStopsWhenPageNotFocused(t *testing.T) {
+	p := NewECSPage(fakeECSService{})
+	p.stage = ecsStageTaskDetail
+	p.taskDetailTab = taskDetailTabLogs
+	p.selectedTask = domainecs.Task{ARN: "task-arn"}
+	p.logTargets = []domainecs.LogTarget{{ContainerName: "app", Supported: true, LogGroup: "group", LogStream: "stream"}}
+	p.logStreaming = true
+	state := testState()
+	state.PageFocused = false
+	cmd := p.Update(taskLogPollTickMsg{taskARN: "task-arn", containerName: "app"}, state)
+	if cmd != nil || p.logStreaming {
+		t.Fatalf("polling should stop without focused logs view")
 	}
 }
 

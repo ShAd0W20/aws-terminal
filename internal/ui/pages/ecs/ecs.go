@@ -2,11 +2,13 @@ package ecs
 
 import (
 	"context"
+	"time"
 
 	"github.com/charmbracelet/bubbles/paginator"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 
 	domainecs "aws-terminal/internal/domain/ecs"
 	"aws-terminal/internal/ui/styles"
@@ -16,6 +18,8 @@ type ECSService interface {
 	ListClusters(ctx context.Context, profileName, region string) ([]domainecs.Cluster, error)
 	ListServices(ctx context.Context, profileName, region, clusterARN string) ([]domainecs.Service, error)
 	ListTasks(ctx context.Context, profileName, region, clusterARN string) ([]domainecs.Task, error)
+	DescribeTaskLogTargets(ctx context.Context, profileName, region, taskDefinitionARN, taskID string) ([]domainecs.LogTarget, error)
+	FetchTaskLogEvents(ctx context.Context, profileName, region string, target domainecs.LogTarget, nextToken string, lookback time.Duration, limit int32) (domainecs.LogEventsPage, error)
 }
 
 type ecsStage int
@@ -29,9 +33,16 @@ const (
 
 type ecsTab int
 
+type taskDetailTab int
+
 const (
 	ecsTabServices ecsTab = iota
 	ecsTabTasks
+)
+
+const (
+	taskDetailTabOverview taskDetailTab = iota
+	taskDetailTabLogs
 )
 
 type clustersLoadedMsg struct {
@@ -49,43 +60,76 @@ type tasksLoadedMsg struct {
 	tasks      []domainecs.Task
 	err        error
 }
+type taskLogTargetsLoadedMsg struct {
+	taskDefinitionARN string
+	taskID            string
+	targets           []domainecs.LogTarget
+	err               error
+}
+type taskLogEventsLoadedMsg struct {
+	taskARN       string
+	containerName string
+	page          domainecs.LogEventsPage
+	err           error
+}
+type taskLogPollTickMsg struct {
+	taskARN       string
+	containerName string
+}
 
-func (clustersLoadedMsg) OwnerPageID() string { return "ecs" }
-func (servicesLoadedMsg) OwnerPageID() string { return "ecs" }
-func (tasksLoadedMsg) OwnerPageID() string    { return "ecs" }
+func (clustersLoadedMsg) OwnerPageID() string       { return "ecs" }
+func (servicesLoadedMsg) OwnerPageID() string       { return "ecs" }
+func (tasksLoadedMsg) OwnerPageID() string          { return "ecs" }
+func (taskLogTargetsLoadedMsg) OwnerPageID() string { return "ecs" }
+func (taskLogEventsLoadedMsg) OwnerPageID() string  { return "ecs" }
+func (taskLogPollTickMsg) OwnerPageID() string      { return "ecs" }
 
 type ECSPage struct {
-	service          ECSService
-	stage            ecsStage
-	tab              ecsTab
-	sessionKey       string
-	loadedFor        string
-	loadingClusters  bool
-	clustersErr      string
-	clusters         []domainecs.Cluster
-	clusterIndex     int
-	selectedCluster  domainecs.Cluster
-	searchInput      textinput.Model
-	clusterTable     table.Model
-	clusterPaginator paginator.Model
-	servicesLoading  bool
-	servicesErr      string
-	services         []domainecs.Service
-	serviceIndex     int
-	serviceTable     table.Model
-	servicePaginator paginator.Model
-	selectedService  domainecs.Service
-	tasksLoading     bool
-	tasksErr         string
-	tasks            []domainecs.Task
-	taskIndex        int
-	taskTable        table.Model
-	taskPaginator    paginator.Model
-	selectedTask     domainecs.Task
-	spinner          spinner.Model
-	clustersCancel   context.CancelFunc
-	servicesCancel   context.CancelFunc
-	tasksCancel      context.CancelFunc
+	service                    ECSService
+	stage                      ecsStage
+	tab                        ecsTab
+	sessionKey                 string
+	loadedFor                  string
+	loadingClusters            bool
+	clustersErr                string
+	clusters                   []domainecs.Cluster
+	clusterIndex               int
+	selectedCluster            domainecs.Cluster
+	searchInput                textinput.Model
+	clusterTable               table.Model
+	clusterPaginator           paginator.Model
+	servicesLoading            bool
+	servicesErr                string
+	services                   []domainecs.Service
+	serviceIndex               int
+	serviceTable               table.Model
+	servicePaginator           paginator.Model
+	selectedService            domainecs.Service
+	tasksLoading               bool
+	tasksErr                   string
+	tasks                      []domainecs.Task
+	taskIndex                  int
+	taskTable                  table.Model
+	taskPaginator              paginator.Model
+	selectedTask               domainecs.Task
+	taskDetailTab              taskDetailTab
+	logTargetsByTaskDefinition map[string][]domainecs.LogTarget
+	logTargetsLoading          bool
+	logTargetsErr              string
+	logTargets                 []domainecs.LogTarget
+	logContainerIndex          int
+	logEventsLoading           bool
+	logEventsErr               string
+	logEvents                  []domainecs.LogEvent
+	logSeenEventIDs            map[string]struct{}
+	logNextToken               string
+	logStreaming               bool
+	logViewport                viewport.Model
+	spinner                    spinner.Model
+	clustersCancel             context.CancelFunc
+	servicesCancel             context.CancelFunc
+	tasksCancel                context.CancelFunc
+	logsCancel                 context.CancelFunc
 }
 
 func NewECSPage(service ECSService) *ECSPage {
@@ -108,7 +152,8 @@ func NewECSPage(service ECSService) *ECSPage {
 	sp.Type = paginator.Arabic
 	tp := paginator.New(paginator.WithPerPage(8))
 	tp.Type = paginator.Arabic
-	return &ECSPage{service: service, stage: ecsStageClusters, searchInput: search, spinner: spin, clusterTable: ct, clusterPaginator: cp, serviceTable: st, servicePaginator: sp, taskTable: tt, taskPaginator: tp}
+	vp := viewport.New(80, 12)
+	return &ECSPage{service: service, stage: ecsStageClusters, searchInput: search, spinner: spin, clusterTable: ct, clusterPaginator: cp, serviceTable: st, servicePaginator: sp, taskTable: tt, taskPaginator: tp, logTargetsByTaskDefinition: map[string][]domainecs.LogTarget{}, logSeenEventIDs: map[string]struct{}{}, logViewport: vp}
 }
 
 func (*ECSPage) ID() string              { return "ecs" }
