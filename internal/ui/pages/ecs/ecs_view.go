@@ -143,27 +143,119 @@ func (p *ECSPage) searchHint(scope string) string {
 
 func (p *ECSPage) serviceDetailLines() []string {
 	s := p.selectedService
-	lines := []string{styles.MutedStyle.Render("Service detail"), "Name: " + value(s.Name), "ARN: " + value(s.ARN), "Status: " + value(s.Status), "Task definition: " + value(s.TaskDefinition), "Task definition ARN: " + value(s.TaskDefinitionARN), fmt.Sprintf("Desired/Running/Pending: %d/%d/%d", s.DesiredCount, s.RunningCount, s.PendingCount), "Launch type: " + value(s.LaunchType), "Capacity providers: " + value(strings.Join(s.CapacityProviders, ", ")), "Platform version: " + value(s.PlatformVersion), "Created: " + timeText(s.CreatedAt), "Deployment controller: " + value(s.DeploymentController), fmt.Sprintf("Network: %d subnets, %d security groups, public IP %s", s.SubnetCount, s.SecurityGroupCount, value(s.AssignPublicIP)), "", styles.MutedStyle.Render("Deployments")}
-	for _, d := range s.Deployments {
-		lines = append(lines, fmt.Sprintf("- %s %s %s %d/%d (+%d)", value(d.Status), value(d.RolloutState), value(d.TaskDefinition), d.RunningCount, d.DesiredCount, d.PendingCount))
+	lines := []string{
+		styles.MutedStyle.Render("Service detail"),
+		"",
+		fmt.Sprintf("%s  •  %d running / %d desired  •  %d pending", statusLabel(s.Status), s.RunningCount, s.DesiredCount, s.PendingCount),
 	}
-	lines = append(lines, "", styles.MutedStyle.Render("Press b or Esc to return."))
+
+	if reason := serviceAttentionReason(s); reason != "" {
+		lines = append(lines, "", styles.StatusStyle.Render("Needs attention"), reason)
+	}
+
+	lines = append(lines,
+		"",
+		styles.MutedStyle.Render("Network"),
+		detailKV("Subnets", fmt.Sprint(s.SubnetCount)),
+		detailKV("Security groups", fmt.Sprint(s.SecurityGroupCount)),
+		detailKV("Public IP", s.AssignPublicIP),
+		"",
+		styles.MutedStyle.Render("Runtime"),
+		detailKV("Launch type", s.LaunchType),
+		detailKV("Capacity", strings.Join(s.CapacityProviders, ", ")),
+		detailKV("Platform", s.PlatformVersion),
+		detailKV("Task definition", s.TaskDefinition),
+		detailKV("Created", timeText(s.CreatedAt)),
+	)
+	if strings.TrimSpace(s.DeploymentController) != "" {
+		lines = append(lines, detailKV("Controller", s.DeploymentController))
+	}
+
+	if len(s.Deployments) > 0 {
+		lines = append(lines, "", styles.MutedStyle.Render("Deployments"))
+		for _, d := range s.Deployments {
+			state := d.RolloutState
+			if strings.TrimSpace(state) == "" {
+				state = d.Status
+			}
+			lines = append(lines, fmt.Sprintf("%s  •  %s  •  %d running / %d desired  •  %d pending", statusLabel(state), value(d.TaskDefinition), d.RunningCount, d.DesiredCount, d.PendingCount))
+		}
+	}
+
+	lines = append(lines,
+		"",
+		styles.MutedStyle.Render("Identifiers"),
+		detailKV("Name", s.Name),
+		detailKV("Service ARN", s.ARN),
+		detailKV("Task def ARN", s.TaskDefinitionARN),
+		"",
+		styles.MutedStyle.Render("Press b or Esc to return."),
+	)
 	return lines
 }
-func (p *ECSPage) taskDetailLines() []string {
+
+func (p *ECSPage) taskDetailLines() []string { return p.taskOverviewLines() }
+
+func (p *ECSPage) taskOverviewLines() []string {
 	t := p.selectedTask
-	lines := []string{styles.MutedStyle.Render("Task detail"), "Task ID: " + value(t.ID), "ARN: " + value(t.ARN), "Last status: " + value(t.LastStatus), "Desired status: " + value(t.DesiredStatus), "Health: " + value(t.HealthStatus), "Task definition: " + value(t.TaskDefinition), "Task definition ARN: " + value(t.TaskDefinitionARN), "Group: " + value(t.Group), "Launch type: " + value(t.LaunchType), "Platform version: " + value(t.PlatformVersion), "Availability zone: " + value(t.AvailabilityZone), "Connectivity: " + value(t.Connectivity), "Private IP: " + value(t.PrivateIP), "Created: " + timeText(t.CreatedAt), "Pull started/stopped: " + timeText(t.PullStartedAt) + " / " + timeText(t.PullStoppedAt), "Started: " + timeText(t.StartedAt), "Stopping/stopped: " + timeText(t.StoppingAt) + " / " + timeText(t.StoppedAt), "Stopped reason: " + value(t.StoppedReason), "", styles.MutedStyle.Render("Containers")}
+	health := strings.ToLower(value(t.HealthStatus))
+	lines := []string{
+		styles.MutedStyle.Render("Task detail"),
+		"",
+		fmt.Sprintf("%s  •  health %s", statusLabel(t.LastStatus), health),
+	}
+
+	if reason := taskAttentionReason(t); reason != "" {
+		lines = append(lines, "", styles.StatusStyle.Render("Needs attention"), reason)
+	}
+
+	timeLabel, timeValue := "Started", timeText(t.StartedAt)
+	if !t.StoppedAt.IsZero() || strings.EqualFold(t.LastStatus, "STOPPED") {
+		timeLabel, timeValue = "Stopped", timeText(t.StoppedAt)
+	} else if timeValue == "—" {
+		timeLabel, timeValue = "Created", timeText(t.CreatedAt)
+	}
+	lines = append(lines,
+		"",
+		detailKV("IP", t.PrivateIP),
+		detailKV("Location", t.AvailabilityZone),
+		detailKV("Runtime", t.LaunchType),
+		detailKV("Connectivity", t.Connectivity),
+		detailKV(timeLabel, timeValue),
+	)
+
+	lines = append(lines, "", styles.MutedStyle.Render("Containers"))
+	if len(t.Containers) == 0 {
+		lines = append(lines, styles.MutedStyle.Render("No containers reported."))
+	}
 	for _, c := range t.Containers {
-		exit := "—"
+		exit := ""
 		if c.ExitCode != nil {
-			exit = fmt.Sprint(*c.ExitCode)
+			exit = fmt.Sprintf("  •  exit %d", *c.ExitCode)
 		}
-		lines = append(lines, fmt.Sprintf("- %s %s %s exit=%s %s", value(c.Name), value(c.Image), value(c.LastStatus), exit, value(c.Reason)))
+		lines = append(lines, fmt.Sprintf("%s  %s  •  %s%s", statusLabel(c.LastStatus), value(c.Name), shortImage(c.Image), exit))
+		if strings.TrimSpace(c.Reason) != "" {
+			lines = append(lines, "  reason: "+c.Reason)
+		}
 	}
-	lines = append(lines, "", styles.MutedStyle.Render("Attachments"))
-	for _, a := range t.Attachments {
-		lines = append(lines, fmt.Sprintf("- ENI %s subnet %s MAC %s private IP %s", value(a.ENI), value(a.Subnet), value(a.MAC), value(a.PrivateIP)))
+
+	if len(t.Attachments) > 0 {
+		lines = append(lines, "", styles.MutedStyle.Render("Network attachments"))
+		for _, a := range t.Attachments {
+			lines = append(lines, fmt.Sprintf("ENI %s  •  subnet %s  •  private IP %s", value(a.ENI), value(a.Subnet), value(a.PrivateIP)))
+		}
 	}
-	lines = append(lines, "", styles.MutedStyle.Render("Press b or Esc to return."))
+
+	lines = append(lines,
+		"",
+		styles.MutedStyle.Render("Identifiers"),
+		detailKV("Task ID", t.ID),
+		detailKV("Task definition", t.TaskDefinition),
+		detailKV("Group", t.Group),
+		detailKV("Task ARN", t.ARN),
+		detailKV("Task def ARN", t.TaskDefinitionARN),
+		"",
+		styles.MutedStyle.Render("Press b or Esc to return."),
+	)
 	return lines
 }

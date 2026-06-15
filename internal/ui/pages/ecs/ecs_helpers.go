@@ -66,6 +66,79 @@ func value(v string) string {
 	}
 	return v
 }
+
+func detailKV(label, v string) string {
+	return fmt.Sprintf("%-16s %s", label, value(v))
+}
+
+func statusLabel(status string) string {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		return "? UNKNOWN"
+	}
+	upper := strings.ToUpper(status)
+	symbol := "?"
+	switch upper {
+	case "ACTIVE", "COMPLETED", "RUNNING", "HEALTHY", "CONNECTED", "PRIMARY":
+		symbol = "✓"
+	case "PENDING", "PROVISIONING", "ACTIVATING", "DRAINING", "DEACTIVATING", "IN_PROGRESS":
+		symbol = "…"
+	case "STOPPED", "INACTIVE", "FAILED", "UNHEALTHY", "DISCONNECTED":
+		symbol = "!"
+	}
+	return symbol + " " + upper
+}
+
+func shortImage(image string) string {
+	image = strings.TrimSpace(image)
+	if image == "" {
+		return "—"
+	}
+	if idx := strings.LastIndex(image, "/"); idx >= 0 && idx < len(image)-1 {
+		return image[idx+1:]
+	}
+	return image
+}
+
+func serviceAttentionReason(s domainecs.Service) string {
+	if s.RunningCount < s.DesiredCount {
+		return "Fewer running tasks than desired"
+	}
+	if s.PendingCount > 0 {
+		return "Tasks are pending"
+	}
+	if strings.TrimSpace(s.Status) != "" && !strings.EqualFold(s.Status, "ACTIVE") {
+		return "Service status is " + s.Status
+	}
+	for _, d := range s.Deployments {
+		if strings.EqualFold(d.RolloutState, "FAILED") {
+			return "Deployment failed"
+		}
+	}
+	return ""
+}
+
+func taskAttentionReason(t domainecs.Task) string {
+	if strings.TrimSpace(t.StoppedReason) != "" {
+		return t.StoppedReason
+	}
+	if strings.EqualFold(t.HealthStatus, "UNHEALTHY") {
+		return "Task health is unhealthy"
+	}
+	for _, c := range t.Containers {
+		if strings.TrimSpace(c.Reason) != "" {
+			return c.Reason
+		}
+		if c.ExitCode != nil && *c.ExitCode != 0 {
+			return fmt.Sprintf("Container %s exited with code %d", value(c.Name), *c.ExitCode)
+		}
+	}
+	if strings.TrimSpace(t.LastStatus) != "" && !strings.EqualFold(t.LastStatus, "RUNNING") && !strings.EqualFold(t.LastStatus, "PENDING") {
+		return "Task status is " + t.LastStatus
+	}
+	return ""
+}
+
 func taskCount(s domainecs.Service) string {
 	base := fmt.Sprintf("%d/%d", s.RunningCount, s.DesiredCount)
 	if s.PendingCount > 0 {
