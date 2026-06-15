@@ -23,9 +23,9 @@ func (p *ECRPage) View(state State, width, height int) string {
 	}
 	lines = append(lines, fmt.Sprintf("Active profile: %s", state.ActiveSession.Profile), fmt.Sprintf("Account: %s", workflow.ValueOrFallback(state.ActiveSession.Account, "unknown")), fmt.Sprintf("Region: %s", workflow.ValueOrFallback(activeRegion(state), "unknown")))
 	if state.PageFocused {
-		lines = append(lines, styles.StatusStyle.Render("Page focus is active. Use the page-specific keys below."))
+		lines = append(lines, styles.StatusStyle.Render("Page focus active · tab returns to navigation."))
 	} else {
-		lines = append(lines, styles.MutedStyle.Render("Move focus to the Page area to interact with ECR."))
+		lines = append(lines, styles.MutedStyle.Render("Focus Page to interact with ECR."))
 	}
 	lines = append(lines, "")
 	lines = append(lines, p.summaryLines()...)
@@ -72,7 +72,7 @@ func (p *ECRPage) summaryLines() []string {
 }
 
 func (p *ECRPage) repositoryLines(width, height int) []string {
-	searchHint := "Press Ctrl+F to search."
+	searchHint := "Ctrl+F search · keys in footer"
 	if p.searchInput.Focused() {
 		searchHint = "Search active. Type to filter; Esc leaves search."
 	}
@@ -86,7 +86,7 @@ func (p *ECRPage) repositoryLines(width, height int) []string {
 	}
 	filtered := p.filteredRepositories()
 	if len(filtered) == 0 {
-		lines = append(lines, styles.MutedStyle.Render("No repositories match. Press Enter or c to create one."))
+		lines = append(lines, styles.MutedStyle.Render("No repositories match · Enter/c creates one"))
 		return lines
 	}
 	visible := max(5, height-18)
@@ -145,14 +145,14 @@ func (p *ECRPage) imageLines(width, height, usedLines int) []string {
 		lines = append(lines, "", tableutil.RenderBox(p.imageTable.View(), tableWidth+4))
 		if p.imagePaginator.TotalPages > 1 {
 			start, end := p.imagePaginator.GetSliceBounds(len(p.repositoryImages))
-			lines = append(lines, styles.MutedStyle.Render(fmt.Sprintf("Page %s · showing %d-%d of %d · use ←/h and →/l to page", p.imagePaginator.View(), start+1, end, len(p.repositoryImages))))
+			lines = append(lines, styles.MutedStyle.Render(fmt.Sprintf("Page %s · showing %d-%d of %d", p.imagePaginator.View(), start+1, end, len(p.repositoryImages))))
 		}
 	}
-	lines = append(lines, "", styles.MutedStyle.Render("Press Enter to choose a local Docker image to push."))
+	lines = append(lines, "", styles.MutedStyle.Render("Enter chooses image · keys in footer"))
 	return lines
 }
 func (p *ECRPage) localLines(width, height, usedLines int) []string {
-	searchHint := "Press Ctrl+F to search local images; if no image matches, the search text is used as a manual image reference."
+	searchHint := "Ctrl+F search local images · unmatched text can be used manually"
 	if p.manualInput.Focused() {
 		searchHint = "Local image search active. Type to filter; Esc leaves search."
 	}
@@ -166,7 +166,7 @@ func (p *ECRPage) localLines(width, height, usedLines int) []string {
 	}
 	filtered := p.filteredLocalImages()
 	if len(filtered) == 0 {
-		lines = append(lines, styles.MutedStyle.Render("No local Docker images match. Press Enter to use the typed image reference manually."))
+		lines = append(lines, styles.MutedStyle.Render("No local images match · Enter uses typed reference"))
 		return lines
 	}
 
@@ -176,7 +176,7 @@ func (p *ECRPage) localLines(width, height, usedLines int) []string {
 	lines = append(lines, "", tableutil.RenderBox(p.localTable.View(), tableWidth+4))
 	start, end := p.localPaginator.GetSliceBounds(len(filtered))
 	if p.localPaginator.TotalPages > 1 {
-		lines = append(lines, styles.MutedStyle.Render(fmt.Sprintf("Page %s · showing %d-%d of %d local images · use ←/h and →/l to page", p.localPaginator.View(), start+1, end, len(filtered))))
+		lines = append(lines, styles.MutedStyle.Render(fmt.Sprintf("Page %s · showing %d-%d of %d local images", p.localPaginator.View(), start+1, end, len(filtered))))
 	} else {
 		lines = append(lines, styles.MutedStyle.Render(fmt.Sprintf("Showing %d-%d of %d local images", start+1, end, len(filtered))))
 	}
@@ -200,7 +200,7 @@ func (p *ECRPage) reviewLines() []string {
 	if p.plan == nil {
 		return append(lines, styles.MutedStyle.Render("No push plan available."))
 	}
-	lines = append(lines, fmt.Sprintf("Source: %s", p.plan.SourceImage), fmt.Sprintf("Destination: %s", p.plan.DestinationImage), "", styles.MutedStyle.Render("Press Enter to login, tag, and push using the Docker Engine API."))
+	lines = append(lines, fmt.Sprintf("Source: %s", p.plan.SourceImage), fmt.Sprintf("Destination: %s", p.plan.DestinationImage), "", styles.MutedStyle.Render("Enter logs in, tags, and pushes"))
 	return lines
 }
 func (p *ECRPage) pushLines(width int) []string {

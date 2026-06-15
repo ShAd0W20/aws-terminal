@@ -48,7 +48,7 @@ func TestServiceAttentionReason(t *testing.T) {
 
 func TestRenderLogEventWrapsAndDetectsSeverity(t *testing.T) {
 	line := renderLogEvent("12:00:00", "level=error something very long that should wrap in a tiny viewport", 30)
-	if !strings.Contains(line, "12:00:00") || !strings.Contains(line, "something") {
+	if !strings.Contains(line, "12:00") || !strings.Contains(line, "something") {
 		t.Fatalf("rendered line missing timestamp/message: %q", line)
 	}
 	if !strings.Contains(line, "\n") {
@@ -85,8 +85,8 @@ func TestRenderLogViewportContentAutoFollowsAtBottom(t *testing.T) {
 	p.logViewport.Height = 3
 	p.logEvents = []domainecs.LogEvent{{ID: "1", Timestamp: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC), Message: "INFO one"}}
 	p.renderLogViewportContent()
-	if !strings.Contains(p.logViewport.View(), ":00:00") {
-		t.Fatalf("viewport missing timestamp: %q", p.logViewport.View())
+	if !strings.Contains(p.logViewport.View(), "INFO one") || !strings.Contains(p.logViewport.View(), ":00") {
+		t.Fatalf("viewport missing compact timestamp/message: %q", p.logViewport.View())
 	}
 }
 

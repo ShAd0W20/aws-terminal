@@ -35,15 +35,23 @@ func sidebarDimensions(totalWidth, totalHeight int) (int, int) {
 	}
 
 	if totalWidth < 72 {
-		return totalWidth, min(max(16, totalHeight/3), max(16, totalHeight/2))
+		return totalWidth, min(max(12, totalHeight/3), max(12, totalHeight/2))
+	}
+
+	if totalWidth < 160 || totalHeight < 42 {
+		return clamp(totalWidth/4, 24, 34), totalHeight
 	}
 
 	return clamp(totalWidth/3, 28, 38), totalHeight
 }
 
+func shouldCollapseSidebar(totalWidth, totalHeight int, pageFocused bool) bool {
+	return pageFocused && (totalWidth < 160 || totalHeight < 44)
+}
+
 func sidebarPaneHeights(height, totalProfiles, totalRegions, totalPages int) (profileHeight, regionHeight, pageHeight int, showHint bool) {
 	contentHeight := max(1, height-styles.SidebarPanelStyle.GetVerticalFrameSize())
-	showHint = contentHeight >= 18
+	showHint = contentHeight >= 22
 
 	sectionCount := 3
 	reservedLines := sectionCount + (sectionCount - 1)

@@ -38,9 +38,9 @@ func (p *S3Page) View(state State, width, height int) string {
 	)
 
 	if state.PageFocused {
-		lines = append(lines, styles.StatusStyle.Render("Page focus is active. Use the page-specific keys below. Tab or Shift+Tab returns to Pages."))
+		lines = append(lines, styles.StatusStyle.Render("Page focus active · tab returns to navigation."))
 	} else {
-		lines = append(lines, styles.MutedStyle.Render("Move focus to the Page area to interact with bucket selection, file picking, and review."))
+		lines = append(lines, styles.MutedStyle.Render("Focus Page to interact with S3."))
 	}
 
 	lines = append(lines, "")
@@ -172,7 +172,7 @@ func (p *S3Page) bucketStageLines(width, height int) []string {
 	}
 	lines = append(lines, tableutil.RenderBox(strings.Join(listLines, "\n"), listWidth+4))
 
-	lines = append(lines, "", styles.MutedStyle.Render("Press Enter to use the highlighted bucket and continue to the local source picker."))
+	lines = append(lines, "", styles.MutedStyle.Render("Enter selects bucket · keys in footer"))
 	return lines
 }
 
@@ -198,7 +198,7 @@ func (p *S3Page) sourceStageLines(width, height int) []string {
 	pickerHeight := max(8, height/3)
 	p.picker.SetHeight(pickerHeight)
 	lines = append(lines, p.picker.View())
-	lines = append(lines, "", styles.MutedStyle.Render("Right or l opens a directory. Enter or space selects the highlighted file or folder for sync. Backspace goes up. Press b to go back to bucket selection."))
+	lines = append(lines, "", styles.MutedStyle.Render("Open/select with footer keys · b returns"))
 	return lines
 }
 
@@ -212,7 +212,7 @@ func (p *S3Page) prefixStageLines(width int) []string {
 	}
 	p.prefixInput.Width = max(10, width-12)
 	lines = append(lines, "", p.prefixInput.View())
-	lines = append(lines, "", styles.MutedStyle.Render("Leave the prefix empty to sync into the bucket root. Press Enter to build the sync plan, or b to return to the picker."))
+	lines = append(lines, "", styles.MutedStyle.Render("Empty prefix uses bucket root · Enter builds plan"))
 	return lines
 }
 
@@ -294,7 +294,7 @@ func (p *S3Page) reviewStageLines(width, height int) []string {
 	appendObjects("Skipped", len(p.plan.Skips), func(i int) string { return p.plan.Skips[i].Key })
 	lines = append(lines,
 		"",
-		styles.MutedStyle.Render("Press ↑/↓ or PgUp/PgDn to scroll. Space toggles delete. o toggles planning. m toggles static-site metadata. Enter executes, b edits prefix."),
+		styles.MutedStyle.Render("Review actions · keys in footer"),
 	)
 
 	content := strings.Join(lines, "\n")
@@ -319,7 +319,7 @@ func (p *S3Page) confirmDeleteStageLines(width int) []string {
 	lines := []string{
 		styles.ErrorStyle.Render("Destructive action confirmation required"),
 		fmt.Sprintf("This sync will delete %d remote S3 objects from s3://%s/%s.", deleteCount, p.selectedBucket, strings.Trim(strings.TrimSpace(p.prefixInput.Value()), "/")),
-		styles.MutedStyle.Render("To continue, type DELETE exactly and press Enter. Press b or Esc to return to review."),
+		styles.MutedStyle.Render("Type DELETE exactly · Enter confirms · b/Esc returns"),
 		"",
 		p.confirmInput.View(),
 	}
@@ -426,9 +426,9 @@ func (p *S3Page) syncStageLines(width int) []string {
 		}
 	}
 	if p.syncing {
-		lines = append(lines, "", styles.MutedStyle.Render("Press Esc to cancel the running sync."))
+		lines = append(lines, "", styles.MutedStyle.Render("Esc cancels running sync"))
 	} else {
-		lines = append(lines, "", styles.MutedStyle.Render("Press b or Esc to return to the review screen and run again after adjusting the plan."))
+		lines = append(lines, "", styles.MutedStyle.Render("b/Esc returns to review"))
 	}
 	return lines
 }

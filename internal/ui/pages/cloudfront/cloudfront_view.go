@@ -31,7 +31,7 @@ func (p *CloudFrontPage) View(state State, width, height int) string {
 		fmt.Sprintf("Region: %s", valueOrFallback(activeRegionFromState(state), "us-east-1")),
 	)
 	if state.PageFocused {
-		lines = append(lines, styles.StatusStyle.Render("Page focus is active. Tab or Shift+Tab returns to Pages."))
+		lines = append(lines, styles.StatusStyle.Render("Page focus active · tab returns to navigation."))
 	}
 	if p.copiedMessage != "" {
 		lines = append(lines, "", styles.StatusStyle.Render(p.copiedMessage))
@@ -117,7 +117,7 @@ func (p *CloudFrontPage) distributionStageLines(width, height int) []string {
 	}
 	lines = append(lines, tableutil.RenderBox(strings.Join(listLines, "\n"), listWidth+4))
 
-	lines = append(lines, "", styles.MutedStyle.Render("Press Enter to continue with the selected distribution."))
+	lines = append(lines, "", styles.MutedStyle.Render("Enter selects distribution · keys in footer"))
 	return lines
 }
 
@@ -138,7 +138,7 @@ func (p *CloudFrontPage) pathsStageLines(width int) []string {
 	lines = append(lines,
 		"",
 		styles.MutedStyle.Render("Use comma or space separated paths, for example: /* or /assets/* /index.html"),
-		styles.MutedStyle.Render("Enter creates the invalidation. Press c to copy the AWS CLI command instead."),
+		styles.MutedStyle.Render("Enter creates · c copies CLI command"),
 	)
 	return lines
 }
@@ -175,9 +175,9 @@ func (p *CloudFrontPage) resultStageLines() []string {
 		lines = append(lines, fmt.Sprintf("Paths: %s", strings.Join(p.invalidation.Paths, ", ")))
 	}
 	if p.creating {
-		lines = append(lines, "", styles.MutedStyle.Render("Press Esc to stop waiting for status. The invalidation may still continue in CloudFront."))
+		lines = append(lines, "", styles.MutedStyle.Render("Esc stops waiting; invalidation may continue."))
 	} else {
-		lines = append(lines, "", styles.MutedStyle.Render("Press b or Esc to select another distribution, or c to copy the CLI command."))
+		lines = append(lines, "", styles.MutedStyle.Render("b/Esc selects another · c copies CLI command"))
 	}
 	return lines
 }

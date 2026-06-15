@@ -68,6 +68,10 @@ func (m Model) contentView(width, height int) string {
 		return ""
 	}
 
+	if shouldCollapseSidebar(width, height, m.focus == focusPage) {
+		return m.detailView(width, height)
+	}
+
 	sidebarWidth, sidebarHeight := sidebarDimensions(width, height)
 	if sidebarWidth == width {
 		return m.stackedContentView(width, height, sidebarHeight)
@@ -159,44 +163,17 @@ func (m Model) footerView(width int) string {
 		return ""
 	}
 
+	compact := width < 150 || shouldCollapseSidebar(width, max(0, m.innerHeight()), m.focus == focusPage)
 	helpView := m.help.View(m.currentHelpMap())
-	if width < 64 {
-		helpView = styles.MutedStyle.Render(m.condensedHelpText())
-	}
-
-	statusParts := []string{"Focus: " + m.focusLabel()}
-	if activeProfile := m.activeProfileName(); activeProfile != "" {
-		statusParts = append(statusParts, "Active: "+activeProfile)
-	}
-	if activeRegion := m.activeRegion(); activeRegion != "" {
-		statusParts = append(statusParts, "Region: "+activeRegion)
-	}
-	statusParts = append(statusParts, "Page: "+m.currentPage().Title())
-	if pageStatus := m.currentPageStatus(); pageStatus.Error != "" {
-		statusParts = append(statusParts, "Page error: "+compactStatusText(pageStatus.Error))
-	} else if pageStatus.Message != "" {
-		statusParts = append(statusParts, "Page status: "+compactStatusText(pageStatus.Message))
-	}
-	if m.profileBusy {
-		statusParts = append(statusParts, "SSO login running")
-	}
-	if m.updateCheckBusy {
-		statusParts = append(statusParts, "Checking updates")
-	}
-	if m.updateInstallBusy {
-		statusParts = append(statusParts, "Updating app")
-	}
-	if m.updateAvailable != nil {
-		statusParts = append(statusParts, "Update: "+m.updateAvailable.LatestVersion+" available")
-	}
-	if width >= 90 {
-		statusParts = append(statusParts, fmt.Sprintf("%dx%d", m.width, m.height))
+	if compact {
+		helpView = styles.MutedStyle.Render(m.compactHelpText(width))
 	}
 
 	return components.RenderFooter(components.FooterProps{
 		Width:       width,
 		Help:        helpView,
-		StatusParts: statusParts,
+		StatusParts: m.footerStatusParts(width, compact),
+		Compact:     compact,
 	})
 }
 
@@ -210,6 +187,10 @@ func (m *Model) syncSidebarListsLayout() {
 	headerHeight := lipgloss.Height(m.headerView(innerWidth))
 	footerHeight := lipgloss.Height(m.footerView(innerWidth))
 	contentHeight := max(0, innerHeight-headerHeight-footerHeight)
+	if shouldCollapseSidebar(innerWidth, contentHeight, m.focus == focusPage) {
+		return
+	}
+
 	sidebarWidth, sidebarHeight := sidebarDimensions(innerWidth, contentHeight)
 	if sidebarWidth <= 0 || sidebarHeight <= 0 {
 		return
@@ -239,12 +220,122 @@ func (m Model) currentHelpMap() interface {
 	return m.keys
 }
 
-func (m Model) condensedHelpText() string {
+func (m Model) compactHelpText(width int) string {
+	bindings := m.currentHelpMap().ShortHelp()
+	parts := make([]string, 0, len(bindings)+2)
+	keyOnlyParts := make([]string, 0, len(bindings)+2)
+	seen := map[string]struct{}{}
+	for _, binding := range bindings {
+		help := binding.Help()
+		keyOnly := strings.TrimSpace(help.Key)
+		desc := strings.TrimSpace(help.Desc)
+		if keyOnly == "" {
+			continue
+		}
+		keyText := keyOnly
+		if desc != "" {
+			desc = compactHelpDesc(desc)
+			keyText += " " + desc
+		}
+		if _, ok := seen[keyText]; ok {
+			continue
+		}
+		seen[keyText] = struct{}{}
+		parts = append(parts, keyText)
+		keyOnlyParts = append(keyOnlyParts, keyOnly)
+	}
 	if m.focus == focusPage {
-		return "tab/shift+tab focus • use page keys • q quit"
+		parts = append(parts, "tab nav")
+		keyOnlyParts = append(keyOnlyParts, "tab nav")
+	} else {
+		parts = append(parts, ": commands")
+		keyOnlyParts = append(keyOnlyParts, ":")
+	}
+	parts = append(parts, "q quit")
+	keyOnlyParts = append(keyOnlyParts, "q")
+
+	if len(parts) == 0 {
+		return "tab nav • q quit"
 	}
 
-	return "↑/↓ move • tab/shift+tab focus • enter apply/open • : commands • q quit"
+	line := strings.Join(parts, " • ")
+	if width <= 0 || lipgloss.Width(line) <= width {
+		return line
+	}
+
+	keyOnlyLine := strings.Join(keyOnlyParts, " • ")
+	if lipgloss.Width(keyOnlyLine) <= width {
+		return keyOnlyLine
+	}
+
+	essential := []string{}
+	for _, part := range parts {
+		if strings.HasPrefix(part, "tab") || strings.HasPrefix(part, "shift+tab") || strings.HasPrefix(part, "q ") || strings.HasPrefix(part, "b/") || strings.HasPrefix(part, "esc") || strings.HasPrefix(part, "enter") {
+			essential = append(essential, part)
+		}
+	}
+	if len(essential) == 0 {
+		essential = parts[:min(len(parts), 4)]
+	}
+	return strings.Join(essential, " • ")
+}
+
+func compactHelpDesc(desc string) string {
+	switch desc {
+	case "select/detail":
+		return "select"
+	case "select/continue":
+		return "select"
+	case "continue/create":
+		return "continue"
+	case "switch focus":
+		return "nav"
+	case "next focus":
+		return "focus"
+	case "prev focus":
+		return "prev focus"
+	case "apply / open":
+		return "open"
+	case "refresh profiles":
+		return "refresh"
+	default:
+		return desc
+	}
+}
+
+func (m Model) footerStatusParts(width int, compact bool) []string {
+	statusParts := []string{"Focus: " + m.focusLabel()}
+	if compact && m.focus == focusPage {
+		statusParts = append(statusParts, "tab nav")
+	}
+	if activeProfile := m.activeProfileName(); activeProfile != "" && (!compact || width >= 90) {
+		statusParts = append(statusParts, "Active: "+activeProfile)
+	}
+	if activeRegion := m.activeRegion(); activeRegion != "" && (!compact || width >= 72) {
+		statusParts = append(statusParts, "Region: "+activeRegion)
+	}
+	statusParts = append(statusParts, "Page: "+m.currentPage().Title())
+	if pageStatus := m.currentPageStatus(); pageStatus.Error != "" {
+		statusParts = append(statusParts, "Page error: "+compactStatusText(pageStatus.Error))
+	} else if pageStatus.Message != "" && (!compact || width >= 120) {
+		statusParts = append(statusParts, "Page status: "+compactStatusText(pageStatus.Message))
+	}
+	if m.profileBusy {
+		statusParts = append(statusParts, "SSO login running")
+	}
+	if m.updateCheckBusy && !compact {
+		statusParts = append(statusParts, "Checking updates")
+	}
+	if m.updateInstallBusy {
+		statusParts = append(statusParts, "Updating app")
+	}
+	if m.updateAvailable != nil && (!compact || width >= 110) {
+		statusParts = append(statusParts, "Update: "+m.updateAvailable.LatestVersion+" available")
+	}
+	if width >= 90 {
+		statusParts = append(statusParts, fmt.Sprintf("%dx%d", m.width, m.height))
+	}
+	return statusParts
 }
 
 func (m Model) currentPageStatus() pages.Status {

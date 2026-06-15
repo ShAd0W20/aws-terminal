@@ -31,7 +31,13 @@ func serviceColumnsForWidth(width int) []table.Column {
 	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Service", Min: 18, Weight: 4, Max: 48}, {Title: "Status", Min: 8, Weight: 1, Max: 12}, {Title: "Task definition", Min: 18, Weight: 3, Max: 44}, {Title: "Tasks", Min: 10, Weight: 1, Max: 18}, {Title: "Created", Min: 16}})
 }
 func taskColumnsForWidth(width int) []table.Column {
-	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Task", Min: 12, Weight: 1, Max: 20}, {Title: "Last", Min: 8, Weight: 1, Max: 14}, {Title: "Desired", Min: 8, Weight: 1, Max: 14}, {Title: "Task definition", Min: 16, Weight: 3, Max: 42}, {Title: "IP", Min: 12, Weight: 1, Max: 15}, {Title: "Created", Min: 12, Weight: 1, Max: 16}, {Title: "Started", Min: 12, Weight: 1, Max: 16}})
+	if width < 86 {
+		return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Task definition", Min: 30, Weight: 4, Max: 38}, {Title: "Last", Min: 8, Weight: 1, Max: 12}, {Title: "Desired", Min: 8, Weight: 1, Max: 12}})
+	}
+	if width < 116 {
+		return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Task definition", Min: 34, Weight: 4, Max: 42}, {Title: "Last", Min: 8, Weight: 1, Max: 12}, {Title: "Desired", Min: 8, Weight: 1, Max: 12}, {Title: "IP", Min: 10, Weight: 2, Max: 15}})
+	}
+	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Task definition", Min: 34, Weight: 4, Max: 44}, {Title: "Last", Min: 8, Weight: 1, Max: 14}, {Title: "Desired", Min: 8, Weight: 1, Max: 14}, {Title: "Task", Min: 8, Weight: 2, Max: 20}, {Title: "IP", Min: 10, Weight: 2, Max: 15}, {Title: "Created", Min: 11, Weight: 1, Max: 14}, {Title: "Started", Min: 11, Weight: 1, Max: 14}})
 }
 func clusterColumns() []table.Column { return clusterColumnsForWidth(96) }
 func serviceColumns() []table.Column { return serviceColumnsForWidth(96) }
@@ -276,7 +282,26 @@ func (p *ECSPage) syncTaskTable() {
 	cols := p.taskTable.Columns()
 	rows := []table.Row{}
 	for _, t := range items[start:end] {
-		rows = append(rows, table.Row{tableutil.Truncate(t.ID, cols[0].Width), tableutil.Truncate(t.LastStatus, cols[1].Width), tableutil.Truncate(t.DesiredStatus, cols[2].Width), tableutil.Truncate(value(t.TaskDefinition), cols[3].Width), tableutil.Truncate(value(t.PrivateIP), cols[4].Width), tableTimeText(t.CreatedAt), tableTimeText(t.StartedAt)})
+		row := make(table.Row, 0, len(cols))
+		for _, col := range cols {
+			switch col.Title {
+			case "Task definition":
+				row = append(row, tableutil.Truncate(value(t.TaskDefinition), col.Width))
+			case "Task":
+				row = append(row, tableutil.Truncate(t.ID, col.Width))
+			case "Last":
+				row = append(row, tableutil.Truncate(t.LastStatus, col.Width))
+			case "Desired":
+				row = append(row, tableutil.Truncate(t.DesiredStatus, col.Width))
+			case "IP":
+				row = append(row, tableutil.Truncate(value(t.PrivateIP), col.Width))
+			case "Created":
+				row = append(row, tableutil.Truncate(tableTimeText(t.CreatedAt), col.Width))
+			case "Started":
+				row = append(row, tableutil.Truncate(tableTimeText(t.StartedAt), col.Width))
+			}
+		}
+		rows = append(rows, row)
 	}
 	p.taskTable.SetRows(rows)
 	p.taskTable.SetCursor(max(0, p.taskIndex-start))
@@ -288,6 +313,13 @@ func shortText(v string, width int) string {
 	}
 	runes := []rune(v)
 	return string(runes[:width-1]) + "…"
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func max(a, b int) int {

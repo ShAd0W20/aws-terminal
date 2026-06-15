@@ -25,9 +25,9 @@ func (p *ECSPage) View(state State, width, height int) string {
 	}
 	lines = append(lines, fmt.Sprintf("Active profile: %s", state.ActiveSession.Profile), fmt.Sprintf("Account: %s", workflow.ValueOrFallback(state.ActiveSession.Account, "unknown")), fmt.Sprintf("Region: %s", workflow.ValueOrFallback(activeRegion(state), "unknown")))
 	if state.PageFocused {
-		lines = append(lines, styles.StatusStyle.Render("Page focus is active. Use the page-specific keys below."))
+		lines = append(lines, styles.StatusStyle.Render("Page focus active · tab returns to navigation."))
 	} else {
-		lines = append(lines, styles.MutedStyle.Render("Move focus to the Page area to interact with ECS."))
+		lines = append(lines, styles.MutedStyle.Render("Focus Page to interact with ECS."))
 	}
 	lines = append(lines, "")
 	switch p.stage {
@@ -147,7 +147,7 @@ func (p *ECSPage) searchHint(scope string) string {
 	if p.searchInput.Focused() {
 		return styles.StatusStyle.Render("Search active. Type to filter; Esc leaves search.")
 	}
-	return styles.MutedStyle.Render("Press Ctrl+F to search " + scope + ".")
+	return styles.MutedStyle.Render("Ctrl+F search " + scope + " · keys in footer")
 }
 
 func (p *ECSPage) serviceDetailLines() []string {
@@ -198,7 +198,7 @@ func (p *ECSPage) serviceDetailLines() []string {
 		detailKV("Service ARN", s.ARN),
 		detailKV("Task def ARN", s.TaskDefinitionARN),
 		"",
-		styles.MutedStyle.Render("Press b or Esc to return."),
+		styles.MutedStyle.Render("b/Esc returns · keys in footer"),
 	)
 	return lines
 }
@@ -218,8 +218,8 @@ func (p *ECSPage) taskTabHeaderLines() []string {
 }
 
 func (p *ECSPage) configureLogViewport(width, height, usedLines int) {
-	viewportWidth := max(30, width-styles.PanelStyle.GetHorizontalFrameSize()-8)
-	viewportHeight := max(5, height-usedLines-10)
+	viewportWidth := max(30, width-styles.PanelStyle.GetHorizontalFrameSize()-6)
+	viewportHeight := max(7, height-usedLines-8)
 	if p.logViewport.Width != viewportWidth || p.logViewport.Height != viewportHeight {
 		p.logViewport.Width = viewportWidth
 		p.logViewport.Height = viewportHeight
@@ -238,7 +238,7 @@ func (p *ECSPage) taskLogLines() []string {
 	if p.logStreaming {
 		state = "streaming"
 	}
-	lines = append(lines, "", styles.MutedStyle.Render("Task logs"), fmt.Sprintf("Container: %s  •  %s", containerLabel, state))
+	lines = append(lines, "", styles.MutedStyle.Render("Task logs"), fmt.Sprintf("Task definition: %s", value(p.selectedTask.TaskDefinition)), fmt.Sprintf("Container: %s  •  %s", containerLabel, state))
 	if p.logTargetsLoading {
 		return append(lines, styles.StatusStyle.Render(p.spinner.View()+" Resolving log configuration..."))
 	}
@@ -260,7 +260,7 @@ func (p *ECSPage) taskLogLines() []string {
 	if len(p.logEvents) == 0 && !p.logEventsLoading && p.logEventsErr == "" {
 		lines = append(lines, styles.MutedStyle.Render("No log events in the last 15 minutes yet."))
 	}
-	lines = append(lines, p.logViewport.View(), styles.MutedStyle.Render("Scroll ↑/↓ or k/j · switch tabs [/]: Overview/Logs · containers ctrl+h/ctrl+l · b/Esc back"))
+	lines = append(lines, p.logViewport.View(), styles.MutedStyle.Render("Keys in footer · tab returns to navigation"))
 	return lines
 }
 
@@ -281,15 +281,20 @@ func (p *ECSPage) renderLogViewportContent() {
 }
 
 func renderLogEvent(timestamp, message string, width int) string {
-	prefix := styles.MutedStyle.Render(timestamp + " ")
+	plainPrefix := timestamp + " "
+	if width < 96 && len(timestamp) >= 5 {
+		plainPrefix = timestamp[:5] + " "
+	}
+	prefix := styles.MutedStyle.Render(plainPrefix)
 	message = strings.TrimRight(message, "\n")
-	wrapped := ansi.Wrap(colorizeLogSeverityMarker(message), max(10, width-9), "")
+	prefixWidth := lipgloss.Width(plainPrefix)
+	wrapped := ansi.Wrap(colorizeLogSeverityMarker(message), max(16, width-prefixWidth), "")
 	parts := strings.Split(wrapped, "\n")
 	if len(parts) == 0 {
 		return prefix
 	}
 	parts[0] = prefix + parts[0]
-	indent := strings.Repeat(" ", 9)
+	indent := strings.Repeat(" ", min(prefixWidth, 4))
 	for i := 1; i < len(parts); i++ {
 		parts[i] = indent + parts[i]
 	}
@@ -427,7 +432,7 @@ func (p *ECSPage) taskOverviewLines() []string {
 		detailKV("Task ARN", t.ARN),
 		detailKV("Task def ARN", t.TaskDefinitionARN),
 		"",
-		styles.MutedStyle.Render("Press b or Esc to return."),
+		styles.MutedStyle.Render("b/Esc returns · keys in footer"),
 	)
 	return lines
 }
