@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/ShAd0W20/aws-terminal/main/install.
 Install a specific version or location:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ShAd0W20/aws-terminal/main/install.sh | VERSION=v0.1.1 INSTALL_DIR="$HOME/.local/bin" bash
+curl -fsSL https://raw.githubusercontent.com/ShAd0W20/aws-terminal/main/install.sh | VERSION=v0.2.0 INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
 ### Homebrew
@@ -259,8 +259,8 @@ CI runs on pushes to `main` and pull requests.
 Release builds run when a version tag is pushed:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 The release workflow:
