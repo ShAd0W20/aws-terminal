@@ -4,6 +4,7 @@ import (
 	domainauth "aws-terminal/internal/domain/auth"
 	domainprofile "aws-terminal/internal/domain/profile"
 	domainsession "aws-terminal/internal/domain/session"
+	domainupdate "aws-terminal/internal/domain/update"
 )
 
 type profilesLoadedMsg struct {
@@ -31,4 +32,15 @@ type ssoLoginPolledMsg struct {
 type profileActivatedMsg struct {
 	session domainsession.Session
 	err     error
+}
+
+type updateCheckedMsg struct {
+	result  domainupdate.CheckResult
+	startup bool
+	err     error
+}
+
+type updateInstalledMsg struct {
+	result domainupdate.InstallResult
+	err    error
 }

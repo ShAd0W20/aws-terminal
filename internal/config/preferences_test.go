@@ -72,3 +72,14 @@ func TestRememberRecentPrefixMovesPrefixToFront(t *testing.T) {
 		t.Fatalf("recent prefixes = %#v, want %#v", prefs.S3RecentPrefixes, want)
 	}
 }
+
+func TestCheckForUpdatesOnStartDefaultsEnabled(t *testing.T) {
+	if !CheckForUpdatesOnStart(Preferences{}) {
+		t.Fatal("missing preference should default to enabled")
+	}
+
+	prefs := WithCheckForUpdatesOnStart(Preferences{}, false)
+	if CheckForUpdatesOnStart(prefs) {
+		t.Fatal("explicit false should disable startup update checks")
+	}
+}

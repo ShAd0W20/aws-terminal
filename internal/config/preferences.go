@@ -12,11 +12,12 @@ import (
 const appDirName = "aws-terminal"
 
 type Preferences struct {
-	LastProfile       string   `json:"lastProfile,omitempty"`
-	LastRegion        string   `json:"lastRegion,omitempty"`
-	LastPage          string   `json:"lastPage,omitempty"`
-	S3SourceDirectory string   `json:"s3SourceDirectory,omitempty"`
-	S3RecentPrefixes  []string `json:"s3RecentPrefixes,omitempty"`
+	LastProfile            string   `json:"lastProfile,omitempty"`
+	LastRegion             string   `json:"lastRegion,omitempty"`
+	LastPage               string   `json:"lastPage,omitempty"`
+	S3SourceDirectory      string   `json:"s3SourceDirectory,omitempty"`
+	S3RecentPrefixes       []string `json:"s3RecentPrefixes,omitempty"`
+	CheckForUpdatesOnStart *bool    `json:"checkForUpdatesOnStart,omitempty"`
 }
 
 type PreferenceStore interface {
@@ -128,6 +129,15 @@ func compactStrings(values []string, limit int) []string {
 		}
 	}
 	return compacted
+}
+
+func CheckForUpdatesOnStart(prefs Preferences) bool {
+	return prefs.CheckForUpdatesOnStart == nil || *prefs.CheckForUpdatesOnStart
+}
+
+func WithCheckForUpdatesOnStart(prefs Preferences, enabled bool) Preferences {
+	prefs.CheckForUpdatesOnStart = &enabled
+	return normalizePreferences(prefs)
 }
 
 func RememberRecentPrefix(prefs Preferences, prefix string) Preferences {

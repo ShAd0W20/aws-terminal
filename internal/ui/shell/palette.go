@@ -27,26 +27,61 @@ func (m Model) quickActions() []quickAction {
 				return m.loadProfilesCmd()
 			},
 		},
-		{
+	}
+
+	if m.updateService != nil {
+		actions = append(actions,
+			quickAction{
+				Title:       "Check for updates",
+				Description: "Look for the latest GitHub release.",
+				Run: func(m *Model) tea.Cmd {
+					m.statusMessage = "Checking for updates..."
+					m.errorMessage = ""
+					return m.checkUpdatesCmd(false)
+				},
+			},
+			quickAction{
+				Title:       "Disable startup update checks",
+				Description: "Stop checking GitHub releases automatically on launch.",
+				Run:         func(m *Model) tea.Cmd { return m.disableStartupUpdateChecks() },
+			},
+		)
+	}
+
+	actions = append(actions,
+		quickAction{
 			Title:       "Focus profiles",
 			Description: "Move keyboard focus to the profile list.",
 			Run:         func(m *Model) tea.Cmd { return m.setFocus(focusProfiles) },
 		},
-		{
+		quickAction{
 			Title:       "Focus regions",
 			Description: "Move keyboard focus to the region list.",
 			Run:         func(m *Model) tea.Cmd { return m.setFocus(focusRegions) },
 		},
-		{
+		quickAction{
 			Title:       "Focus pages",
 			Description: "Move keyboard focus to the page navigation list.",
 			Run:         func(m *Model) tea.Cmd { return m.setFocus(focusNavigation) },
 		},
-		{
+		quickAction{
 			Title:       "Focus current page workflow",
 			Description: "Move keyboard focus into the selected page workflow.",
 			Run:         func(m *Model) tea.Cmd { return m.setFocus(focusPage) },
 		},
+	)
+
+	if m.updateAvailable != nil {
+		latest := m.updateAvailable.LatestVersion
+		actions = append(actions, quickAction{
+			Title:       "Update aws-terminal to " + latest,
+			Description: "Download, verify, and install the latest release.",
+			Run: func(m *Model) tea.Cmd {
+				m.statusMessage = "Updating aws-terminal to " + latest + "..."
+				m.errorMessage = ""
+				return m.installUpdateCmd()
+			},
+		})
 	}
 
 	for _, page := range m.pageRegistry {

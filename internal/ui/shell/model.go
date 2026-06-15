@@ -15,6 +15,7 @@ import (
 	domainprofile "aws-terminal/internal/domain/profile"
 	domainregion "aws-terminal/internal/domain/region"
 	domainsession "aws-terminal/internal/domain/session"
+	domainupdate "aws-terminal/internal/domain/update"
 	"aws-terminal/internal/ui/pages"
 	"aws-terminal/internal/ui/styles"
 )
@@ -28,6 +29,12 @@ type AuthenticationService interface {
 	HasReusableSSOSession(ctx context.Context, profile domainprofile.Profile) (bool, error)
 	StartSSOLogin(ctx context.Context, profile domainprofile.Profile) (domainauth.Prompt, error)
 	PollSSOLogin(ctx context.Context, sessionID string) (domainauth.PollResult, error)
+}
+
+type UpdateService interface {
+	CurrentVersion() string
+	Check(ctx context.Context) (domainupdate.CheckResult, error)
+	InstallLatest(ctx context.Context) (domainupdate.InstallResult, error)
 }
 
 type focusArea int
@@ -68,6 +75,10 @@ type Model struct {
 	authPrompt            *domainauth.Prompt
 	preferenceStore       config.PreferenceStore
 	preferences           config.Preferences
+	updateService         UpdateService
+	updateCheckBusy       bool
+	updateInstallBusy     bool
+	updateAvailable       *domainupdate.CheckResult
 	paletteOpen           bool
 	paletteIndex          int
 }
@@ -77,6 +88,10 @@ func NewModel(sessionService SessionService, authService AuthenticationService, 
 }
 
 func NewModelWithPreferences(sessionService SessionService, authService AuthenticationService, pageRegistry []pages.Page, preferenceStore config.PreferenceStore) Model {
+	return NewModelWithPreferencesAndUpdates(sessionService, authService, pageRegistry, preferenceStore, nil)
+}
+
+func NewModelWithPreferencesAndUpdates(sessionService SessionService, authService AuthenticationService, pageRegistry []pages.Page, preferenceStore config.PreferenceStore, updateService UpdateService) Model {
 	helpModel := help.New()
 	helpModel.ShowAll = false
 
@@ -95,6 +110,7 @@ func NewModelWithPreferences(sessionService SessionService, authService Authenti
 	model := Model{
 		sessionService:  sessionService,
 		authService:     authService,
+		updateService:   updateService,
 		preferenceStore: preferenceStore,
 		preferences:     preferences,
 		help:            helpModel,
@@ -117,7 +133,11 @@ func NewModelWithPreferences(sessionService SessionService, authService Authenti
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.loadProfilesCmd(), m.currentPage().OnStateChanged(m.pageState()))
+	cmds := []tea.Cmd{m.loadProfilesCmd(), m.currentPage().OnStateChanged(m.pageState())}
+	if m.shouldCheckUpdatesOnStart() {
+		cmds = append(cmds, m.checkUpdatesCmd(true))
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) innerWidth() int {

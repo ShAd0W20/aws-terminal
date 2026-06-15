@@ -148,6 +148,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMessage = fmt.Sprintf("Authenticated and activated profile %q in region %q.", msg.session.Profile, msg.session.Region)
 		m.errorMessage = ""
 		return m, m.currentPageStateCmd()
+	case updateCheckedMsg:
+		m.updateCheckBusy = false
+		if msg.err != nil {
+			if msg.startup {
+				return m, nil
+			}
+			m.errorMessage = fmt.Sprintf("Could not check for updates: %v", msg.err)
+			m.statusMessage = ""
+			return m, nil
+		}
+		if msg.result.UpdateAvailable {
+			result := msg.result
+			m.updateAvailable = &result
+			m.errorMessage = ""
+			m.statusMessage = fmt.Sprintf("Update available: %s. Open commands (:) and run Update aws-terminal.", msg.result.LatestVersion)
+			return m, nil
+		}
+		m.updateAvailable = nil
+		if !msg.startup {
+			m.errorMessage = ""
+			if msg.result.DevelopmentBuild {
+				m.statusMessage = fmt.Sprintf("Development build; latest release is %s.", msg.result.LatestVersion)
+			} else {
+				m.statusMessage = fmt.Sprintf("aws-terminal is up to date (%s).", msg.result.CurrentVersion)
+			}
+		}
+		return m, nil
+	case updateInstalledMsg:
+		m.updateInstallBusy = false
+		if msg.err != nil {
+			m.errorMessage = fmt.Sprintf("Unable to update aws-terminal: %v", msg.err)
+			m.statusMessage = ""
+			return m, nil
+		}
+		m.errorMessage = ""
+		if msg.result.Updated {
+			m.updateAvailable = nil
+			m.statusMessage = fmt.Sprintf("Updated aws-terminal to %s. Restart the app to use the new version.", msg.result.LatestVersion)
+		} else if msg.result.SelfUpdatable {
+			m.statusMessage = fmt.Sprintf("aws-terminal is up to date (%s).", msg.result.LatestVersion)
+		} else {
+			m.statusMessage = msg.result.Instructions
+		}
+		return m, nil
 	case pages.OpenPageMsg:
 		return m.openPage(msg.PageID, msg.Focus)
 	case pages.OwnedMsg:

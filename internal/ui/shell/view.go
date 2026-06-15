@@ -180,6 +180,15 @@ func (m Model) footerView(width int) string {
 	if m.profileBusy {
 		statusParts = append(statusParts, "SSO login running")
 	}
+	if m.updateCheckBusy {
+		statusParts = append(statusParts, "Checking updates")
+	}
+	if m.updateInstallBusy {
+		statusParts = append(statusParts, "Updating app")
+	}
+	if m.updateAvailable != nil {
+		statusParts = append(statusParts, "Update: "+m.updateAvailable.LatestVersion+" available")
+	}
 	if width >= 90 {
 		statusParts = append(statusParts, fmt.Sprintf("%dx%d", m.width, m.height))
 	}
