@@ -13,7 +13,9 @@ Current implemented workflows:
 - Region selection and active session/caller identity resolution.
 - S3 bucket listing and local file/folder sync to S3.
 - CloudFront distribution listing and invalidation creation/polling.
-- Implemented pages are currently Dashboard, S3, and CloudFront. IAM, EC2, and Networking placeholders have been removed until real workflows are added.
+- ECR private repository listing/creation and local Docker image push workflows.
+- ECS cluster, service, and running-task browsing with compact service/task detail views.
+- Implemented pages are currently Dashboard, S3, CloudFront, ECR, and ECS. IAM, EC2, and Networking placeholders have been removed until real workflows are added.
 
 ## Common commands
 
@@ -41,6 +43,8 @@ internal/ui/components                   # header/footer/sidebar components
 internal/ui/pages                        # page type re-exports and simple pages
 internal/ui/pages/s3                     # S3 workflow package
 internal/ui/pages/cloudfront             # CloudFront workflow package
+internal/ui/pages/ecr                    # ECR workflow package
+internal/ui/pages/ecs                    # ECS browser/detail package
 internal/ui/styles                       # shared Lip Gloss theme/helpers
 ```
 
@@ -62,6 +66,8 @@ Keep AWS SDK imports out of `domain`, `application`, and `ui` packages. Add smal
 - `authentication.Service` with native SSO OIDC device-flow authenticator.
 - `s3.Service` with AWS S3 store.
 - `cloudfront.Service` with AWS CloudFront service.
+- `ecr.Service` with AWS ECR service + local Docker adapter.
+- `ecs.Service` with AWS ECS service.
 - app page registry via `internal/app/pages.go`.
 - `shell.NewModelWithPreferences(...)`, run with `tea.WithAltScreen()`.
 
@@ -222,6 +228,35 @@ Current behavior:
 - Creates invalidations and polls until status is `Completed`.
 - `esc` stops waiting for invalidation status; already-created invalidations may still continue in CloudFront.
 - Can copy an equivalent AWS CLI invalidation command to the clipboard.
+
+## ECS workflow notes
+
+Key files:
+
+- `internal/application/ecs/service.go`
+- `internal/application/ecs/ports.go`
+- `internal/infrastructure/awsecs/service.go`
+- `internal/ui/pages/ecs/*`
+- `internal/domain/ecs/types.go`
+
+Current behavior:
+
+- Lists ECS clusters for the active profile/region.
+- Selecting a cluster loads services and non-stopped tasks.
+- Services and tasks are searchable and paginated in table views.
+- Service detail uses a compact overview: status/counts first, optional `Needs attention`, then network, runtime, deployments, and identifiers.
+- Task detail uses a compact overview: status/health first, optional `Needs attention`, then private IP, availability zone, runtime/connectivity, containers, network attachments, and identifiers.
+- Task container image references are shortened in the overview to keep full ECR URLs from overwhelming the screen.
+- Long ARNs remain visible but are de-emphasized in the bottom `Identifiers` section.
+- `taskDetailLines()` delegates to `taskOverviewLines()` so a future task logs tab can be added without reshaping the overview renderer.
+- Future task-detail tabs should use left/right or `[`/`]`; keep `tab` reserved for shell focus movement.
+
+When modifying ECS behavior, run and/or update:
+
+```bash
+go test ./internal/application/ecs ./internal/infrastructure/awsecs ./internal/ui/pages/ecs
+go test ./...
+```
 
 ## Cancellation and async commands
 
