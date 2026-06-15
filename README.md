@@ -62,6 +62,24 @@ scoop install aws-terminal
 
 Download prebuilt binaries from the [latest GitHub Release](https://github.com/ShAd0W20/aws-terminal/releases/latest).
 
+### Updates
+
+`aws-terminal` checks for new GitHub releases on startup by default and shows a non-blocking prompt when an update is available. Direct macOS/Linux installs can update from the CLI:
+
+```bash
+aws-terminal check-update
+aws-terminal update
+```
+
+Homebrew and Scoop installs should be updated through their package managers:
+
+```bash
+brew upgrade aws-terminal
+scoop update aws-terminal
+```
+
+Set `"checkForUpdatesOnStart": false` in `~/.config/aws-terminal/config.json` to disable automatic startup checks. Manual checks still work.
+
 Published targets:
 
 - Windows amd64
