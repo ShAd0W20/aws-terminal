@@ -91,6 +91,35 @@ func (shellTestAuthService) PollSSOLogin(context.Context, string) (domainauth.Po
 	return domainauth.PollResult{}, nil
 }
 
+func TestRefreshKeyRoutesToPageWhenPageFocused(t *testing.T) {
+	page := &testPage{id: "current"}
+	model := Model{
+		sessionService: shellTestSessionService{},
+		authService:    shellTestAuthService{},
+		keys:           DefaultKeyMap,
+		pageRegistry:   []pages.Page{page},
+		pageList:       newSidebarListModel(),
+		profileList:    newSidebarListModel(),
+		focus:          focusPage,
+	}
+	model.refreshPageList("current")
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	model = updated.(Model)
+	if cmd != nil {
+		cmd()
+	}
+	if page.updates != 1 {
+		t.Fatalf("expected focused page to receive refresh key, got %d updates", page.updates)
+	}
+	if keyMsg, ok := page.lastMsg.(tea.KeyMsg); !ok || string(keyMsg.Runes) != "r" {
+		t.Fatalf("expected page to receive r key, got %#v", page.lastMsg)
+	}
+	if model.statusMessage == "Refreshing AWS profiles..." {
+		t.Fatal("refresh key should not trigger global profile refresh while page is focused")
+	}
+}
+
 func TestActivateSelectedSSOProfileChecksReusableSession(t *testing.T) {
 	profile := testShellSSOProfile()
 	model := testShellModel(shellTestAuthService{reusable: true}, profile)

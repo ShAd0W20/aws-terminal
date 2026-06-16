@@ -215,6 +215,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.BackFocus):
 			return m, m.toggleFocusBack()
 		case key.Matches(msg, m.keys.Refresh):
+			if m.focus == focusPage {
+				return m, m.currentPageUpdateCmd(msg)
+			}
 			m.statusMessage = "Refreshing AWS profiles..."
 			m.errorMessage = ""
 			return m, m.loadProfilesCmd()
