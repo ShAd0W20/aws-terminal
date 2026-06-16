@@ -44,6 +44,23 @@ func (s *Service) ListServices(ctx context.Context, profileName, region, cluster
 	return services, nil
 }
 
+func (s *Service) ListTaskDefinitions(ctx context.Context, profileName, region, familyPrefix string) ([]domainecs.TaskDefinitionSummary, error) {
+	profileName = strings.TrimSpace(profileName)
+	familyPrefix = strings.TrimSpace(familyPrefix)
+	if profileName == "" {
+		return nil, fmt.Errorf("profile name is required")
+	}
+	if familyPrefix == "" {
+		return nil, fmt.Errorf("task definition family is required")
+	}
+	definitions, err := s.api.ListTaskDefinitions(ctx, profileName, strings.TrimSpace(region), familyPrefix)
+	if err != nil {
+		return nil, err
+	}
+	SortTaskDefinitions(definitions)
+	return definitions, nil
+}
+
 func (s *Service) ListTasks(ctx context.Context, profileName, region, clusterARN string) ([]domainecs.Task, error) {
 	profileName = strings.TrimSpace(profileName)
 	clusterARN = strings.TrimSpace(clusterARN)
@@ -65,6 +82,30 @@ func (s *Service) ListTasks(ctx context.Context, profileName, region, clusterARN
 	}
 	SortTasks(filtered)
 	return filtered, nil
+}
+
+func (s *Service) UpdateService(ctx context.Context, input domainecs.UpdateServiceInput) (domainecs.UpdateServiceResult, error) {
+	input.ProfileName = strings.TrimSpace(input.ProfileName)
+	input.Region = strings.TrimSpace(input.Region)
+	input.ClusterARN = strings.TrimSpace(input.ClusterARN)
+	input.Service = strings.TrimSpace(input.Service)
+	input.TaskDefinitionARN = strings.TrimSpace(input.TaskDefinitionARN)
+	if input.ProfileName == "" {
+		return domainecs.UpdateServiceResult{}, fmt.Errorf("profile name is required")
+	}
+	if input.ClusterARN == "" {
+		return domainecs.UpdateServiceResult{}, fmt.Errorf("cluster ARN is required")
+	}
+	if input.Service == "" {
+		return domainecs.UpdateServiceResult{}, fmt.Errorf("service is required")
+	}
+	if input.DesiredCount != nil && *input.DesiredCount < 0 {
+		return domainecs.UpdateServiceResult{}, fmt.Errorf("desired count must be non-negative")
+	}
+	if input.TaskDefinitionARN == "" && input.DesiredCount == nil && !input.ForceNewDeployment {
+		return domainecs.UpdateServiceResult{}, fmt.Errorf("at least one service update is required")
+	}
+	return s.api.UpdateService(ctx, input)
 }
 
 func (s *Service) DescribeTaskLogTargets(ctx context.Context, profileName, region, taskDefinitionARN, taskID string) ([]domainecs.LogTarget, error) {
@@ -123,6 +164,15 @@ func SortServices(services []domainecs.Service) {
 			return ia
 		}
 		return strings.ToLower(services[i].Name) < strings.ToLower(services[j].Name)
+	})
+}
+
+func SortTaskDefinitions(definitions []domainecs.TaskDefinitionSummary) {
+	sort.SliceStable(definitions, func(i, j int) bool {
+		if !strings.EqualFold(definitions[i].Family, definitions[j].Family) {
+			return strings.ToLower(definitions[i].Family) < strings.ToLower(definitions[j].Family)
+		}
+		return definitions[i].Revision > definitions[j].Revision
 	})
 }
 

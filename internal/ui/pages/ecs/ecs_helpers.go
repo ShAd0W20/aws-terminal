@@ -2,6 +2,8 @@ package ecs
 
 import (
 	"fmt"
+	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,6 +66,33 @@ func tableTimeText(t time.Time) string {
 		return "—"
 	}
 	return t.Local().Format("01-02 15:04")
+}
+
+func taskDefinitionFamilyFromNameOrARN(value string) string {
+	name := path.Base(strings.TrimSpace(value))
+	if idx := strings.LastIndex(name, ":"); idx >= 0 {
+		return name[:idx]
+	}
+	return name
+}
+
+func (p *ECSPage) selectedTaskDefinition() domainecs.TaskDefinitionSummary {
+	if len(p.taskDefinitions) == 0 || p.taskDefinitionIndex < 0 || p.taskDefinitionIndex >= len(p.taskDefinitions) {
+		return domainecs.TaskDefinitionSummary{}
+	}
+	return p.taskDefinitions[p.taskDefinitionIndex]
+}
+
+func (p *ECSPage) parsedDesiredCount() (int, error) {
+	value := strings.TrimSpace(p.desiredCountInput.Value())
+	if value == "" {
+		return 0, fmt.Errorf("desired count is required")
+	}
+	count, err := strconv.Atoi(value)
+	if err != nil || count < 0 {
+		return 0, fmt.Errorf("desired count must be a non-negative integer")
+	}
+	return count, nil
 }
 
 func value(v string) string {
@@ -263,6 +292,19 @@ func (p *ECSPage) syncServiceTable() {
 	p.serviceTable.SetRows(rows)
 	p.serviceTable.SetCursor(max(0, p.serviceIndex-start))
 }
+func (p *ECSPage) syncTaskDefinitionSelection() {
+	p.taskDefinitionPaginator.SetTotalPages(len(p.taskDefinitions))
+	if p.taskDefinitionPaginator.Page >= p.taskDefinitionPaginator.TotalPages {
+		p.taskDefinitionPaginator.Page = max(0, p.taskDefinitionPaginator.TotalPages-1)
+	}
+	if p.taskDefinitionIndex >= len(p.taskDefinitions) {
+		p.taskDefinitionIndex = max(0, len(p.taskDefinitions)-1)
+	}
+	if len(p.taskDefinitions) > 0 {
+		p.taskDefinitionPaginator.Page = p.taskDefinitionIndex / max(1, p.taskDefinitionPaginator.PerPage)
+	}
+}
+
 func (p *ECSPage) syncTaskTable() {
 	items := p.filteredTasks()
 	p.taskPaginator.SetTotalPages(len(items))

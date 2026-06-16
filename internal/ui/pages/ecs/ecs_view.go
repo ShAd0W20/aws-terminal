@@ -29,6 +29,9 @@ func (p *ECSPage) View(state State, width, height int) string {
 	} else {
 		lines = append(lines, styles.MutedStyle.Render("Focus Page to interact with ECS."))
 	}
+	if p.updateSuccess != "" {
+		lines = append(lines, styles.StatusStyle.Render(p.updateSuccess))
+	}
 	lines = append(lines, "")
 	switch p.stage {
 	case ecsStageClusters:
@@ -40,6 +43,14 @@ func (p *ECSPage) View(state State, width, height int) string {
 	case ecsStageTaskDetail:
 		p.configureLogViewport(width, height, len(lines))
 		lines = append(lines, p.taskDetailLines()...)
+	case ecsStageUpdateTaskDefinition:
+		lines = append(lines, p.updateTaskDefinitionLines(width, height, len(lines))...)
+	case ecsStageUpdateDesiredCount:
+		lines = append(lines, p.updateDesiredCountLines(width)...)
+	case ecsStageUpdateReview:
+		lines = append(lines, p.updateReviewLines()...)
+	case ecsStageUpdating:
+		lines = append(lines, p.updatingServiceLines()...)
 	}
 	return styles.RenderBox(styles.PanelStyle, width, height, strings.Join(lines, "\n"))
 }
@@ -49,6 +60,14 @@ func (p *ECSPage) ShortHelp() []key.Binding {
 		return []key.Binding{ecsUpKey, ecsDownKey, ecsPagePrevKey, ecsPageNextKey, ecsEnterKey, ecsSearchKey, ecsRefreshKey, ecsTabHelpKey}
 	case ecsStageResources:
 		return []key.Binding{ecsUpKey, ecsDownKey, ecsPagePrevKey, ecsPageNextKey, ecsPrevTabKey, ecsNextTabKey, ecsEnterKey, ecsSearchKey, ecsRefreshKey, ecsBackKey, ecsTabHelpKey}
+	case ecsStageUpdateTaskDefinition:
+		return []key.Binding{ecsUpKey, ecsDownKey, ecsPagePrevKey, ecsPageNextKey, ecsEnterKey, ecsBackKey, ecsTabHelpKey}
+	case ecsStageUpdateDesiredCount:
+		return []key.Binding{ecsEnterKey, ecsBackKey, ecsTabHelpKey}
+	case ecsStageUpdateReview:
+		return []key.Binding{ecsToggleKey, ecsEnterKey, ecsBackKey, ecsTabHelpKey}
+	case ecsStageUpdating:
+		return []key.Binding{ecsBackKey, ecsTabHelpKey}
 	case ecsStageTaskDetail:
 		if p.taskDetailTab == taskDetailTabLogs {
 			return []key.Binding{ecsPrevTabKey, ecsNextTabKey, ecsPrevContainerKey, ecsNextContainerKey, ecsUpKey, ecsDownKey, ecsBackKey, ecsTabHelpKey}
@@ -198,9 +217,78 @@ func (p *ECSPage) serviceDetailLines() []string {
 		detailKV("Service ARN", s.ARN),
 		detailKV("Task def ARN", s.TaskDefinitionARN),
 		"",
-		styles.MutedStyle.Render("b/Esc returns · keys in footer"),
+		styles.MutedStyle.Render("u updates service · b/Esc returns · keys in footer"),
 	)
 	return lines
+}
+
+func (p *ECSPage) updateTaskDefinitionLines(width, height, usedLines int) []string {
+	lines := []string{styles.MutedStyle.Render("Step 1 of 3 · Select task definition"), fmt.Sprintf("Cluster: %s", p.selectedCluster.Name), fmt.Sprintf("Service: %s", p.selectedService.Name)}
+	if p.taskDefinitionsLoading {
+		return append(lines, "", styles.StatusStyle.Render(p.spinner.View()+" Loading task definitions..."))
+	}
+	if p.taskDefinitionsErr != "" {
+		return append(lines, "", styles.ErrorStyle.Render(p.taskDefinitionsErr), styles.MutedStyle.Render("b/Esc returns"))
+	}
+	if len(p.taskDefinitions) == 0 {
+		return append(lines, "", styles.MutedStyle.Render("No task definitions found for family "+value(p.updateFamilyPrefix)+"."), styles.MutedStyle.Render("b/Esc returns"))
+	}
+	p.taskDefinitionPaginator.PerPage = max(5, height-usedLines-len(lines)-7)
+	p.syncTaskDefinitionSelection()
+	start, end := p.taskDefinitionPaginator.GetSliceBounds(len(p.taskDefinitions))
+	lines = append(lines, "")
+	for i := start; i < end; i++ {
+		definition := p.taskDefinitions[i]
+		marker := "  "
+		if i == p.taskDefinitionIndex {
+			marker = "> "
+		}
+		current := ""
+		if definition.ARN == p.selectedService.TaskDefinitionARN {
+			current = " (current)"
+		}
+		line := fmt.Sprintf("%s%s%s", marker, value(definition.DisplayName), current)
+		if definition.Status != "" {
+			line += " · " + definition.Status
+		}
+		lines = append(lines, ansi.Truncate(line, max(20, width-8), "…"))
+	}
+	start, end = p.taskDefinitionPaginator.GetSliceBounds(len(p.taskDefinitions))
+	lines = append(lines, "", styles.MutedStyle.Render(fmt.Sprintf("Page %s · showing %d-%d of %d · Enter continues · b/Esc returns", p.taskDefinitionPaginator.View(), start+1, end, len(p.taskDefinitions))))
+	return lines
+}
+
+func (p *ECSPage) updateDesiredCountLines(width int) []string {
+	p.desiredCountInput.Width = max(8, width-24)
+	lines := []string{styles.MutedStyle.Render("Step 2 of 3 · Desired task count"), fmt.Sprintf("Cluster: %s", p.selectedCluster.Name), fmt.Sprintf("Service: %s", p.selectedService.Name), fmt.Sprintf("Task definition: %s", value(p.selectedTaskDefinition().DisplayName)), "", p.desiredCountInput.View(), styles.MutedStyle.Render(fmt.Sprintf("Current desired count: %d · Enter continues · b/Esc returns", p.selectedService.DesiredCount))}
+	if p.updateErr != "" {
+		lines = append(lines, "", styles.ErrorStyle.Render(p.updateErr))
+	}
+	return lines
+}
+
+func (p *ECSPage) updateReviewLines() []string {
+	desired, err := p.parsedDesiredCount()
+	selected := p.selectedTaskDefinition()
+	lines := []string{styles.MutedStyle.Render("Step 3 of 3 · Review service update"), fmt.Sprintf("Cluster: %s", p.selectedCluster.Name), fmt.Sprintf("Service: %s", p.selectedService.Name), "", styles.MutedStyle.Render("Task definition"), detailKV("Current", p.selectedService.TaskDefinition), detailKV("New", selected.DisplayName), "", styles.MutedStyle.Render("Desired count"), detailKV("Current", fmt.Sprint(p.selectedService.DesiredCount))}
+	if err == nil {
+		lines = append(lines, detailKV("New", fmt.Sprint(desired)))
+	} else {
+		lines = append(lines, detailKV("New", "invalid"))
+	}
+	force := "No"
+	if p.updateForceNewDeployment {
+		force = "Yes"
+	}
+	lines = append(lines, "", detailKV("Force deploy", force), "", styles.MutedStyle.Render("Space toggles force-new-deployment · Enter confirms update · b/Esc returns"))
+	if p.updateErr != "" {
+		lines = append(lines, "", styles.ErrorStyle.Render(p.updateErr))
+	}
+	return lines
+}
+
+func (p *ECSPage) updatingServiceLines() []string {
+	return []string{styles.MutedStyle.Render("Updating ECS service"), fmt.Sprintf("Cluster: %s", p.selectedCluster.Name), fmt.Sprintf("Service: %s", p.selectedService.Name), "", styles.StatusStyle.Render(p.spinner.View() + " Calling ECS UpdateService..."), styles.MutedStyle.Render("b/Esc cancels")}
 }
 
 func (p *ECSPage) taskDetailLines() []string {

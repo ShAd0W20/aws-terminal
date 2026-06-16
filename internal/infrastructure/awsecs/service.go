@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,6 +89,28 @@ func (s *Service) ListServices(ctx context.Context, profileName, region, cluster
 	return services, nil
 }
 
+func (s *Service) ListTaskDefinitions(ctx context.Context, profileName, region, familyPrefix string) ([]domainecs.TaskDefinitionSummary, error) {
+	ctx, cancel := awsclients.WithTimeout(ctx, s.clients.OperationTimeout())
+	defer cancel()
+	client, err := s.client(ctx, profileName, region)
+	if err != nil {
+		return nil, err
+	}
+	input := &awsecsdk.ListTaskDefinitionsInput{FamilyPrefix: aws.String(strings.TrimSpace(familyPrefix)), Sort: ecstypes.SortOrderDesc, Status: ecstypes.TaskDefinitionStatusActive}
+	p := awsecsdk.NewListTaskDefinitionsPaginator(client, input)
+	definitions := []domainecs.TaskDefinitionSummary{}
+	for p.HasMorePages() {
+		page, err := p.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, arn := range page.TaskDefinitionArns {
+			definitions = append(definitions, taskDefinitionSummaryFromARN(arn, string(ecstypes.TaskDefinitionStatusActive)))
+		}
+	}
+	return definitions, nil
+}
+
 func (s *Service) ListTasks(ctx context.Context, profileName, region, clusterARN string) ([]domainecs.Task, error) {
 	ctx, cancel := awsclients.WithTimeout(ctx, s.clients.OperationTimeout())
 	defer cancel()
@@ -123,6 +146,33 @@ func (s *Service) ListTasks(ctx context.Context, profileName, region, clusterARN
 		return nil, err
 	}
 	return tasks, nil
+}
+
+func (s *Service) UpdateService(ctx context.Context, input domainecs.UpdateServiceInput) (domainecs.UpdateServiceResult, error) {
+	ctx, cancel := awsclients.WithTimeout(ctx, s.clients.OperationTimeout())
+	defer cancel()
+	client, err := s.client(ctx, input.ProfileName, input.Region)
+	if err != nil {
+		return domainecs.UpdateServiceResult{}, err
+	}
+	awsInput := &awsecsdk.UpdateServiceInput{Cluster: aws.String(strings.TrimSpace(input.ClusterARN)), Service: aws.String(strings.TrimSpace(input.Service))}
+	if strings.TrimSpace(input.TaskDefinitionARN) != "" {
+		awsInput.TaskDefinition = aws.String(strings.TrimSpace(input.TaskDefinitionARN))
+	}
+	if input.DesiredCount != nil {
+		awsInput.DesiredCount = aws.Int32(int32(*input.DesiredCount))
+	}
+	if input.ForceNewDeployment {
+		awsInput.ForceNewDeployment = input.ForceNewDeployment
+	}
+	out, err := client.UpdateService(ctx, awsInput)
+	if err != nil {
+		return domainecs.UpdateServiceResult{}, err
+	}
+	if out.Service == nil {
+		return domainecs.UpdateServiceResult{}, fmt.Errorf("updated service not returned")
+	}
+	return domainecs.UpdateServiceResult{Service: serviceFromSDK(*out.Service)}, nil
 }
 
 func (s *Service) DescribeTaskLogTargets(ctx context.Context, profileName, region, taskDefinitionARN, taskID string) ([]domainecs.LogTarget, error) {
@@ -474,6 +524,20 @@ func taskDefinitionName(arn string) string {
 		return ""
 	}
 	return path.Base(arn)
+}
+
+func taskDefinitionSummaryFromARN(arn, status string) domainecs.TaskDefinitionSummary {
+	arn = strings.TrimSpace(arn)
+	display := taskDefinitionName(arn)
+	family := display
+	revision := 0
+	if idx := strings.LastIndex(display, ":"); idx >= 0 {
+		family = display[:idx]
+		if parsed, err := strconv.Atoi(display[idx+1:]); err == nil {
+			revision = parsed
+		}
+	}
+	return domainecs.TaskDefinitionSummary{ARN: arn, DisplayName: display, Family: family, Revision: revision, Status: strings.TrimSpace(status)}
 }
 func taskID(arn string) string {
 	if arn == "" {

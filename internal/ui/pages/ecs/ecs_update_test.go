@@ -19,8 +19,14 @@ func (fakeECSService) ListClusters(context.Context, string, string) ([]domainecs
 func (fakeECSService) ListServices(context.Context, string, string, string) ([]domainecs.Service, error) {
 	return nil, nil
 }
+func (fakeECSService) ListTaskDefinitions(context.Context, string, string, string) ([]domainecs.TaskDefinitionSummary, error) {
+	return nil, nil
+}
 func (fakeECSService) ListTasks(context.Context, string, string, string) ([]domainecs.Task, error) {
 	return nil, nil
+}
+func (fakeECSService) UpdateService(context.Context, domainecs.UpdateServiceInput) (domainecs.UpdateServiceResult, error) {
+	return domainecs.UpdateServiceResult{}, nil
 }
 func (fakeECSService) DescribeTaskLogTargets(context.Context, string, string, string, string) ([]domainecs.LogTarget, error) {
 	return []domainecs.LogTarget{{ContainerName: "app", LogGroup: "group", LogStream: "prefix/app/task", Supported: true}, {ContainerName: "sidecar", Supported: false, Message: "No awslogs CloudWatch Logs configuration found for container sidecar."}}, nil
@@ -118,6 +124,50 @@ func TestLogPollingStopsWhenPageNotFocused(t *testing.T) {
 	cmd := p.Update(taskLogPollTickMsg{taskARN: "task-arn", containerName: "app"}, state)
 	if cmd != nil || p.logStreaming {
 		t.Fatalf("polling should stop without focused logs view")
+	}
+}
+
+func TestStartServiceUpdateLoadsTaskDefinitionsForFamily(t *testing.T) {
+	p := NewECSPage(fakeECSService{})
+	p.stage = ecsStageServiceDetail
+	p.selectedCluster = domainecs.Cluster{Name: "prod", ARN: "cluster"}
+	p.selectedService = domainecs.Service{Name: "api", ARN: "svc", TaskDefinitionARN: "arn:aws:ecs:eu-west-1:123:task-definition/api:2", TaskDefinition: "api:2", DesiredCount: 2}
+	cmd := p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")}, testState())
+	if cmd == nil || p.stage != ecsStageUpdateTaskDefinition || !p.taskDefinitionsLoading {
+		t.Fatalf("expected task definition loading update stage, stage=%v loading=%v cmd nil=%v", p.stage, p.taskDefinitionsLoading, cmd == nil)
+	}
+	if p.updateFamilyPrefix != "api" || p.desiredCountInput.Value() != "2" {
+		t.Fatalf("family/input not prefilled: family=%q desired=%q", p.updateFamilyPrefix, p.desiredCountInput.Value())
+	}
+}
+
+func TestTaskDefinitionSelectionPreselectsCurrentAndBuildsUpdate(t *testing.T) {
+	p := NewECSPage(fakeECSService{})
+	p.stage = ecsStageUpdateTaskDefinition
+	p.updateFamilyPrefix = "api"
+	p.selectedCluster = domainecs.Cluster{Name: "prod", ARN: "cluster"}
+	p.selectedService = domainecs.Service{Name: "api", ARN: "svc", TaskDefinitionARN: "td:2", TaskDefinition: "api:2", DesiredCount: 2}
+	p.Update(taskDefinitionsLoadedMsg{familyPrefix: "api", taskDefinitions: []domainecs.TaskDefinitionSummary{{ARN: "td:3", DisplayName: "api:3", Family: "api", Revision: 3}, {ARN: "td:2", DisplayName: "api:2", Family: "api", Revision: 2}}}, testState())
+	if p.taskDefinitionIndex != 1 {
+		t.Fatalf("expected current task definition preselected, got index %d", p.taskDefinitionIndex)
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyUp}, testState())
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter}, testState())
+	if p.stage != ecsStageUpdateDesiredCount || !p.desiredCountInput.Focused() {
+		t.Fatalf("expected desired count stage with focused input, stage=%v focused=%v", p.stage, p.desiredCountInput.Focused())
+	}
+	p.desiredCountInput.SetValue("4")
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter}, testState())
+	if p.stage != ecsStageUpdateReview {
+		t.Fatalf("expected review stage, got %v", p.stage)
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeySpace}, testState())
+	input, err := p.buildUpdateServiceInput(testState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input.TaskDefinitionARN != "td:3" || input.DesiredCount == nil || *input.DesiredCount != 4 || !input.ForceNewDeployment {
+		t.Fatalf("unexpected update input: %#v", input)
 	}
 }
 

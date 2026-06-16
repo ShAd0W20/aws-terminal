@@ -17,7 +17,9 @@ import (
 type ECSService interface {
 	ListClusters(ctx context.Context, profileName, region string) ([]domainecs.Cluster, error)
 	ListServices(ctx context.Context, profileName, region, clusterARN string) ([]domainecs.Service, error)
+	ListTaskDefinitions(ctx context.Context, profileName, region, familyPrefix string) ([]domainecs.TaskDefinitionSummary, error)
 	ListTasks(ctx context.Context, profileName, region, clusterARN string) ([]domainecs.Task, error)
+	UpdateService(ctx context.Context, input domainecs.UpdateServiceInput) (domainecs.UpdateServiceResult, error)
 	DescribeTaskLogTargets(ctx context.Context, profileName, region, taskDefinitionARN, taskID string) ([]domainecs.LogTarget, error)
 	FetchTaskLogEvents(ctx context.Context, profileName, region string, target domainecs.LogTarget, nextToken string, lookback time.Duration, limit int32) (domainecs.LogEventsPage, error)
 }
@@ -29,6 +31,10 @@ const (
 	ecsStageResources
 	ecsStageServiceDetail
 	ecsStageTaskDetail
+	ecsStageUpdateTaskDefinition
+	ecsStageUpdateDesiredCount
+	ecsStageUpdateReview
+	ecsStageUpdating
 )
 
 type ecsTab int
@@ -76,13 +82,27 @@ type taskLogPollTickMsg struct {
 	taskARN       string
 	containerName string
 }
+type taskDefinitionsLoadedMsg struct {
+	familyPrefix    string
+	taskDefinitions []domainecs.TaskDefinitionSummary
+	err             error
+}
+type serviceUpdatedMsg struct {
+	clusterARN string
+	result     domainecs.UpdateServiceResult
+	err        error
+}
+type updateSuccessClearMsg struct{ seq int }
 
-func (clustersLoadedMsg) OwnerPageID() string       { return "ecs" }
-func (servicesLoadedMsg) OwnerPageID() string       { return "ecs" }
-func (tasksLoadedMsg) OwnerPageID() string          { return "ecs" }
-func (taskLogTargetsLoadedMsg) OwnerPageID() string { return "ecs" }
-func (taskLogEventsLoadedMsg) OwnerPageID() string  { return "ecs" }
-func (taskLogPollTickMsg) OwnerPageID() string      { return "ecs" }
+func (clustersLoadedMsg) OwnerPageID() string        { return "ecs" }
+func (servicesLoadedMsg) OwnerPageID() string        { return "ecs" }
+func (tasksLoadedMsg) OwnerPageID() string           { return "ecs" }
+func (taskLogTargetsLoadedMsg) OwnerPageID() string  { return "ecs" }
+func (taskLogEventsLoadedMsg) OwnerPageID() string   { return "ecs" }
+func (taskLogPollTickMsg) OwnerPageID() string       { return "ecs" }
+func (taskDefinitionsLoadedMsg) OwnerPageID() string { return "ecs" }
+func (serviceUpdatedMsg) OwnerPageID() string        { return "ecs" }
+func (updateSuccessClearMsg) OwnerPageID() string    { return "ecs" }
 
 type ECSPage struct {
 	service                    ECSService
@@ -105,6 +125,19 @@ type ECSPage struct {
 	serviceTable               table.Model
 	servicePaginator           paginator.Model
 	selectedService            domainecs.Service
+	taskDefinitionsLoading     bool
+	taskDefinitionsErr         string
+	taskDefinitions            []domainecs.TaskDefinitionSummary
+	taskDefinitionIndex        int
+	taskDefinitionPaginator    paginator.Model
+	updateFamilyPrefix         string
+	desiredCountInput          textinput.Model
+	updateForceNewDeployment   bool
+	updatingService            bool
+	updateErr                  string
+	updateSuccess              string
+	updateSuccessSeq           int
+	updateCancel               context.CancelFunc
 	tasksLoading               bool
 	tasksErr                   string
 	tasks                      []domainecs.Task
@@ -152,11 +185,19 @@ func NewECSPage(service ECSService) *ECSPage {
 	sp.Type = paginator.Arabic
 	tp := paginator.New(paginator.WithPerPage(8))
 	tp.Type = paginator.Arabic
+	dp := paginator.New(paginator.WithPerPage(8))
+	dp.Type = paginator.Arabic
+	desired := textinput.New()
+	desired.Prompt = "Desired tasks: "
+	desired.Placeholder = "1"
+	desired.CharLimit = 6
 	vp := viewport.New(80, 12)
-	return &ECSPage{service: service, stage: ecsStageClusters, searchInput: search, spinner: spin, clusterTable: ct, clusterPaginator: cp, serviceTable: st, servicePaginator: sp, taskTable: tt, taskPaginator: tp, logTargetsByTaskDefinition: map[string][]domainecs.LogTarget{}, logSeenEventIDs: map[string]struct{}{}, logViewport: vp}
+	return &ECSPage{service: service, stage: ecsStageClusters, searchInput: search, desiredCountInput: desired, spinner: spin, clusterTable: ct, clusterPaginator: cp, serviceTable: st, servicePaginator: sp, taskTable: tt, taskPaginator: tp, taskDefinitionPaginator: dp, logTargetsByTaskDefinition: map[string][]domainecs.LogTarget{}, logSeenEventIDs: map[string]struct{}{}, logViewport: vp}
 }
 
-func (*ECSPage) ID() string              { return "ecs" }
-func (*ECSPage) Title() string           { return "ECS" }
-func (*ECSPage) Description() string     { return "Browse ECS clusters, services, and tasks." }
-func (p *ECSPage) HasFocusedInput() bool { return p.searchInput.Focused() }
+func (*ECSPage) ID() string          { return "ecs" }
+func (*ECSPage) Title() string       { return "ECS" }
+func (*ECSPage) Description() string { return "Browse ECS clusters, services, and tasks." }
+func (p *ECSPage) HasFocusedInput() bool {
+	return p.searchInput.Focused() || p.desiredCountInput.Focused()
+}

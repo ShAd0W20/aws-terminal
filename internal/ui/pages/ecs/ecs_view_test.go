@@ -90,6 +90,34 @@ func TestRenderLogViewportContentAutoFollowsAtBottom(t *testing.T) {
 	}
 }
 
+func TestUpdateReviewShowsOldAndNewValues(t *testing.T) {
+	p := NewECSPage(fakeECSService{})
+	p.selectedCluster = domainecs.Cluster{Name: "prod"}
+	p.selectedService = domainecs.Service{Name: "api", TaskDefinition: "api:2", TaskDefinitionARN: "td:2", DesiredCount: 2}
+	p.taskDefinitions = []domainecs.TaskDefinitionSummary{{ARN: "td:3", DisplayName: "api:3"}}
+	p.taskDefinitionIndex = 0
+	p.desiredCountInput.SetValue("4")
+	p.updateForceNewDeployment = true
+	view := strings.Join(p.updateReviewLines(), "\n")
+	for _, want := range []string{"prod", "api", "api:2", "api:3", "Force deploy", "Yes", "4"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("review missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestTaskDefinitionSelectShowsCurrentOption(t *testing.T) {
+	p := NewECSPage(fakeECSService{})
+	p.selectedCluster = domainecs.Cluster{Name: "prod"}
+	p.selectedService = domainecs.Service{Name: "api", TaskDefinitionARN: "td:2"}
+	p.taskDefinitions = []domainecs.TaskDefinitionSummary{{ARN: "td:3", DisplayName: "api:3", Status: "ACTIVE"}, {ARN: "td:2", DisplayName: "api:2", Status: "ACTIVE"}}
+	p.taskDefinitionIndex = 1
+	view := strings.Join(p.updateTaskDefinitionLines(100, 30, 0), "\n")
+	if !strings.Contains(view, "api:2 (current)") || !strings.Contains(view, "> api:2") {
+		t.Fatalf("task definition select did not show current selection:\n%s", view)
+	}
+}
+
 func TestTaskDetailSurfacesStoppedReasonAndShortImage(t *testing.T) {
 	p := NewECSPage(fakeECSService{})
 	p.selectedTask = domainecs.Task{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,14 +34,19 @@ func (p *ECSPage) OnStateChanged(state State) tea.Cmd {
 func (p *ECSPage) SetFocused(focused bool) tea.Cmd {
 	if !focused {
 		p.searchInput.Blur()
+		p.desiredCountInput.Blur()
 		p.stopLogStreaming()
+		return nil
+	}
+	if p.stage == ecsStageUpdateDesiredCount {
+		return p.desiredCountInput.Focus()
 	}
 	return nil
 }
 func (p *ECSPage) Update(msg tea.Msg, state State) tea.Cmd {
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
-		if !p.loadingClusters && !p.servicesLoading && !p.tasksLoading && !p.logTargetsLoading && !p.logEventsLoading {
+		if !p.loadingClusters && !p.servicesLoading && !p.tasksLoading && !p.logTargetsLoading && !p.logEventsLoading && !p.taskDefinitionsLoading && !p.updatingService {
 			return nil
 		}
 		var cmd tea.Cmd
@@ -100,6 +106,56 @@ func (p *ECSPage) Update(msg tea.Msg, state State) tea.Cmd {
 		p.tasksErr = ""
 		p.taskIndex = 0
 		p.syncTaskTable()
+		return nil
+	case taskDefinitionsLoadedMsg:
+		if msg.familyPrefix != p.updateFamilyPrefix {
+			return nil
+		}
+		p.taskDefinitionsLoading = false
+		p.updateCancel = nil
+		if errors.Is(msg.err, context.Canceled) {
+			return nil
+		}
+		if msg.err != nil {
+			p.taskDefinitionsErr = fmt.Sprintf("Unable to load task definitions: %v", msg.err)
+			return nil
+		}
+		p.taskDefinitions = ensureCurrentTaskDefinition(msg.taskDefinitions, p.selectedService)
+		p.taskDefinitionsErr = ""
+		p.preselectCurrentTaskDefinition()
+		p.syncTaskDefinitionSelection()
+		return nil
+	case serviceUpdatedMsg:
+		if msg.clusterARN != p.selectedCluster.ARN {
+			return nil
+		}
+		p.updatingService = false
+		p.updateCancel = nil
+		if errors.Is(msg.err, context.Canceled) {
+			return nil
+		}
+		if msg.err != nil {
+			p.updateErr = fmt.Sprintf("Unable to update service: %v", msg.err)
+			p.stage = ecsStageUpdateReview
+			return nil
+		}
+		p.selectedService = msg.result.Service
+		p.stage = ecsStageServiceDetail
+		p.updateSuccessSeq++
+		p.updateSuccess = "Service update started. Refreshing service and task data..."
+		cmds := []tea.Cmd{p.clearUpdateSuccessCmd(p.updateSuccessSeq, 4*time.Second)}
+		if state.ActiveSession != nil {
+			p.servicesLoading = true
+			p.tasksLoading = true
+			p.servicesErr = ""
+			p.tasksErr = ""
+			cmds = append(cmds, p.spinner.Tick, p.loadServicesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN), p.loadTasksCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN))
+		}
+		return tea.Batch(cmds...)
+	case updateSuccessClearMsg:
+		if msg.seq == p.updateSuccessSeq {
+			p.updateSuccess = ""
+		}
 		return nil
 	case taskLogTargetsLoadedMsg:
 		if msg.taskDefinitionARN != p.selectedTask.TaskDefinitionARN || msg.taskID != p.selectedTask.ID {
@@ -175,6 +231,23 @@ func (p *ECSPage) Update(msg tea.Msg, state State) tea.Cmd {
 	case ecsStageServiceDetail:
 		if key.Matches(k, ecsBackKey) {
 			p.stage = ecsStageResources
+			return nil
+		}
+		if key.Matches(k, ecsUpdateServiceKey) {
+			return p.startServiceUpdate(state)
+		}
+	case ecsStageUpdateTaskDefinition:
+		return p.updateTaskDefinitionStage(k)
+	case ecsStageUpdateDesiredCount:
+		return p.updateDesiredCountStage(msg, state)
+	case ecsStageUpdateReview:
+		return p.updateServiceReviewStage(k, state)
+	case ecsStageUpdating:
+		if key.Matches(k, ecsBackKey) && p.updateCancel != nil {
+			p.updateCancel()
+			p.updateCancel = nil
+			p.updatingService = false
+			p.stage = ecsStageUpdateReview
 			return nil
 		}
 	case ecsStageTaskDetail:
@@ -308,6 +381,177 @@ func (p *ECSPage) updateServicesTable(k tea.KeyMsg) tea.Cmd {
 	}
 	return p.updatePaged(k, false)
 }
+func (p *ECSPage) startServiceUpdate(state State) tea.Cmd {
+	if state.ActiveSession == nil {
+		return nil
+	}
+	p.resetUpdateState()
+	p.updateFamilyPrefix = taskDefinitionFamilyFromNameOrARN(p.selectedService.TaskDefinitionARN)
+	if p.updateFamilyPrefix == "" {
+		p.updateFamilyPrefix = taskDefinitionFamilyFromNameOrARN(p.selectedService.TaskDefinition)
+	}
+	p.desiredCountInput.SetValue(strconv.Itoa(p.selectedService.DesiredCount))
+	p.stage = ecsStageUpdateTaskDefinition
+	p.taskDefinitionsLoading = true
+	p.taskDefinitionsErr = ""
+	return tea.Batch(p.spinner.Tick, p.loadTaskDefinitionsCmd(state.ActiveSession.Profile, activeRegion(state), p.updateFamilyPrefix))
+}
+
+func (p *ECSPage) updateTaskDefinitionStage(k tea.KeyMsg) tea.Cmd {
+	if key.Matches(k, ecsBackKey) {
+		p.resetUpdateState()
+		p.stage = ecsStageServiceDetail
+		return nil
+	}
+	if p.taskDefinitionsLoading || len(p.taskDefinitions) == 0 {
+		return nil
+	}
+	switch {
+	case key.Matches(k, ecsUpKey):
+		if p.taskDefinitionIndex > 0 {
+			p.taskDefinitionIndex--
+		}
+		p.syncTaskDefinitionSelection()
+		return nil
+	case key.Matches(k, ecsDownKey):
+		if p.taskDefinitionIndex < len(p.taskDefinitions)-1 {
+			p.taskDefinitionIndex++
+		}
+		p.syncTaskDefinitionSelection()
+		return nil
+	case key.Matches(k, ecsEnterKey):
+		p.stage = ecsStageUpdateDesiredCount
+		return p.desiredCountInput.Focus()
+	}
+	prev := p.taskDefinitionPaginator.Page
+	var cmd tea.Cmd
+	p.taskDefinitionPaginator, cmd = p.taskDefinitionPaginator.Update(k)
+	if p.taskDefinitionPaginator.Page != prev {
+		start, _ := p.taskDefinitionPaginator.GetSliceBounds(len(p.taskDefinitions))
+		p.taskDefinitionIndex = start
+		p.syncTaskDefinitionSelection()
+	}
+	return cmd
+}
+
+func (p *ECSPage) updateDesiredCountStage(msg tea.Msg, state State) tea.Cmd {
+	k, isKey := msg.(tea.KeyMsg)
+	if isKey {
+		if key.Matches(k, ecsBackKey) {
+			p.desiredCountInput.Blur()
+			p.stage = ecsStageUpdateTaskDefinition
+			return nil
+		}
+		if key.Matches(k, ecsEnterKey) {
+			if _, err := p.parsedDesiredCount(); err != nil {
+				p.updateErr = err.Error()
+				return nil
+			}
+			p.updateErr = ""
+			p.desiredCountInput.Blur()
+			p.stage = ecsStageUpdateReview
+			return nil
+		}
+	}
+	if state.PageFocused {
+		return p.updateDesiredInput(msg)
+	}
+	return nil
+}
+
+func (p *ECSPage) updateDesiredInput(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	p.desiredCountInput, cmd = p.desiredCountInput.Update(msg)
+	return cmd
+}
+
+func (p *ECSPage) updateServiceReviewStage(k tea.KeyMsg, state State) tea.Cmd {
+	if key.Matches(k, ecsBackKey) {
+		p.stage = ecsStageUpdateDesiredCount
+		return p.desiredCountInput.Focus()
+	}
+	if key.Matches(k, ecsToggleKey) {
+		p.updateForceNewDeployment = !p.updateForceNewDeployment
+		return nil
+	}
+	if key.Matches(k, ecsEnterKey) {
+		if state.ActiveSession == nil {
+			return nil
+		}
+		input, err := p.buildUpdateServiceInput(state)
+		if err != nil {
+			p.updateErr = err.Error()
+			return nil
+		}
+		p.updateErr = ""
+		p.updatingService = true
+		p.stage = ecsStageUpdating
+		return tea.Batch(p.spinner.Tick, p.updateServiceCmd(input))
+	}
+	return nil
+}
+
+func (p *ECSPage) buildUpdateServiceInput(state State) (domainecs.UpdateServiceInput, error) {
+	desired, err := p.parsedDesiredCount()
+	if err != nil {
+		return domainecs.UpdateServiceInput{}, err
+	}
+	selected := p.selectedTaskDefinition()
+	if strings.TrimSpace(selected.ARN) == "" {
+		return domainecs.UpdateServiceInput{}, fmt.Errorf("task definition is required")
+	}
+	input := domainecs.UpdateServiceInput{ProfileName: state.ActiveSession.Profile, Region: activeRegion(state), ClusterARN: p.selectedCluster.ARN, Service: p.selectedService.ARN, ForceNewDeployment: p.updateForceNewDeployment}
+	if input.Service == "" {
+		input.Service = p.selectedService.Name
+	}
+	if selected.ARN != p.selectedService.TaskDefinitionARN {
+		input.TaskDefinitionARN = selected.ARN
+	}
+	if desired != p.selectedService.DesiredCount {
+		input.DesiredCount = &desired
+	}
+	if input.TaskDefinitionARN == "" && input.DesiredCount == nil && !input.ForceNewDeployment {
+		return domainecs.UpdateServiceInput{}, fmt.Errorf("select a task-definition or desired-count change, or enable force-new-deployment")
+	}
+	return input, nil
+}
+
+func ensureCurrentTaskDefinition(definitions []domainecs.TaskDefinitionSummary, service domainecs.Service) []domainecs.TaskDefinitionSummary {
+	currentARN := strings.TrimSpace(service.TaskDefinitionARN)
+	if currentARN == "" {
+		return definitions
+	}
+	for _, definition := range definitions {
+		if strings.TrimSpace(definition.ARN) == currentARN {
+			return definitions
+		}
+	}
+	current := domainecs.TaskDefinitionSummary{ARN: currentARN, DisplayName: service.TaskDefinition, Family: taskDefinitionFamilyFromNameOrARN(currentARN)}
+	if strings.TrimSpace(current.DisplayName) == "" {
+		current.DisplayName = taskDefinitionNameForUI(currentARN)
+	}
+	return append([]domainecs.TaskDefinitionSummary{current}, definitions...)
+}
+
+func taskDefinitionNameForUI(arn string) string {
+	base := strings.TrimSpace(arn)
+	if idx := strings.LastIndex(base, "/"); idx >= 0 && idx < len(base)-1 {
+		return base[idx+1:]
+	}
+	return base
+}
+
+func (p *ECSPage) preselectCurrentTaskDefinition() {
+	p.taskDefinitionIndex = 0
+	currentARN := strings.TrimSpace(p.selectedService.TaskDefinitionARN)
+	for i, definition := range p.taskDefinitions {
+		if strings.TrimSpace(definition.ARN) == currentARN {
+			p.taskDefinitionIndex = i
+			return
+		}
+	}
+}
+
 func (p *ECSPage) updateTasksTable(k tea.KeyMsg) tea.Cmd {
 	items := p.filteredTasks()
 	switch {

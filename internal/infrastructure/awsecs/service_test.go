@@ -7,6 +7,13 @@ import (
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 )
 
+func TestTaskDefinitionSummaryFromARNParsesFamilyRevision(t *testing.T) {
+	summary := taskDefinitionSummaryFromARN("arn:aws:ecs:eu-west-1:123:task-definition/api:42", "ACTIVE")
+	if summary.ARN != "arn:aws:ecs:eu-west-1:123:task-definition/api:42" || summary.DisplayName != "api:42" || summary.Family != "api" || summary.Revision != 42 || summary.Status != "ACTIVE" {
+		t.Fatalf("unexpected summary: %#v", summary)
+	}
+}
+
 func TestTaskFromSDKUsesContainerNetworkInterfacePrivateIP(t *testing.T) {
 	task := taskFromSDK(ecstypes.Task{
 		TaskArn: aws.String("arn:aws:ecs:eu-west-1:123:task/backend/abc123"),

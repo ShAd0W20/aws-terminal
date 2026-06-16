@@ -10,11 +10,13 @@ import (
 )
 
 type fakeAPI struct {
-	clusters      []domainecs.Cluster
-	services      []domainecs.Service
-	tasks         []domainecs.Task
-	fetchLookback time.Duration
-	fetchLimit    int32
+	clusters        []domainecs.Cluster
+	services        []domainecs.Service
+	taskDefinitions []domainecs.TaskDefinitionSummary
+	tasks           []domainecs.Task
+	updateInput     domainecs.UpdateServiceInput
+	fetchLookback   time.Duration
+	fetchLimit      int32
 }
 
 func (f fakeAPI) ListClusters(context.Context, string, string) ([]domainecs.Cluster, error) {
@@ -23,8 +25,15 @@ func (f fakeAPI) ListClusters(context.Context, string, string) ([]domainecs.Clus
 func (f fakeAPI) ListServices(context.Context, string, string, string) ([]domainecs.Service, error) {
 	return append([]domainecs.Service(nil), f.services...), nil
 }
+func (f fakeAPI) ListTaskDefinitions(context.Context, string, string, string) ([]domainecs.TaskDefinitionSummary, error) {
+	return append([]domainecs.TaskDefinitionSummary(nil), f.taskDefinitions...), nil
+}
 func (f fakeAPI) ListTasks(context.Context, string, string, string) ([]domainecs.Task, error) {
 	return append([]domainecs.Task(nil), f.tasks...), nil
+}
+func (f *fakeAPI) UpdateService(_ context.Context, input domainecs.UpdateServiceInput) (domainecs.UpdateServiceResult, error) {
+	f.updateInput = input
+	return domainecs.UpdateServiceResult{Service: domainecs.Service{Name: input.Service, ARN: input.Service, TaskDefinitionARN: input.TaskDefinitionARN}}, nil
 }
 func (f fakeAPI) DescribeTaskLogTargets(context.Context, string, string, string, string) ([]domainecs.LogTarget, error) {
 	return []domainecs.LogTarget{{ContainerName: "app", Supported: true, LogGroup: "group", LogStream: "prefix/app/task"}}, nil
@@ -62,6 +71,44 @@ func TestListServicesValidatesInputsAndSortsActiveFirst(t *testing.T) {
 	names := []string{got[0].Name, got[1].Name, got[2].Name}
 	if !reflect.DeepEqual(names, []string{"a", "b", "z"}) {
 		t.Fatalf("unexpected order: %v", names)
+	}
+}
+
+func TestListTaskDefinitionsValidatesAndSortsNewestFirst(t *testing.T) {
+	svc := NewService(&fakeAPI{taskDefinitions: []domainecs.TaskDefinitionSummary{{Family: "api", Revision: 1}, {Family: "api", Revision: 3}, {Family: "api", Revision: 2}}})
+	if _, err := svc.ListTaskDefinitions(context.Background(), " ", "eu-west-1", "api"); err == nil {
+		t.Fatal("expected profile validation error")
+	}
+	if _, err := svc.ListTaskDefinitions(context.Background(), "dev", "eu-west-1", " "); err == nil {
+		t.Fatal("expected family validation error")
+	}
+	got, err := svc.ListTaskDefinitions(context.Background(), "dev", "eu-west-1", "api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	revisions := []int{got[0].Revision, got[1].Revision, got[2].Revision}
+	if !reflect.DeepEqual(revisions, []int{3, 2, 1}) {
+		t.Fatalf("unexpected order: %v", revisions)
+	}
+}
+
+func TestUpdateServiceValidatesAndTrimsInput(t *testing.T) {
+	api := &fakeAPI{}
+	svc := NewService(api)
+	if _, err := svc.UpdateService(context.Background(), domainecs.UpdateServiceInput{ProfileName: "dev", ClusterARN: "cluster", Service: "svc"}); err == nil {
+		t.Fatal("expected no-op validation error")
+	}
+	negative := -1
+	if _, err := svc.UpdateService(context.Background(), domainecs.UpdateServiceInput{ProfileName: "dev", ClusterARN: "cluster", Service: "svc", DesiredCount: &negative}); err == nil {
+		t.Fatal("expected negative desired count validation error")
+	}
+	desired := 2
+	_, err := svc.UpdateService(context.Background(), domainecs.UpdateServiceInput{ProfileName: " dev ", Region: " eu-west-1 ", ClusterARN: " cluster ", Service: " svc ", TaskDefinitionARN: " td ", DesiredCount: &desired})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if api.updateInput.ProfileName != "dev" || api.updateInput.Region != "eu-west-1" || api.updateInput.ClusterARN != "cluster" || api.updateInput.Service != "svc" || api.updateInput.TaskDefinitionARN != "td" {
+		t.Fatalf("input was not trimmed: %#v", api.updateInput)
 	}
 }
 

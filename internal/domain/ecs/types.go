@@ -12,6 +12,28 @@ type Cluster struct {
 	RegisteredInstanceCount int
 }
 
+type TaskDefinitionSummary struct {
+	ARN         string
+	DisplayName string
+	Family      string
+	Revision    int
+	Status      string
+}
+
+type UpdateServiceInput struct {
+	ProfileName        string
+	Region             string
+	ClusterARN         string
+	Service            string
+	TaskDefinitionARN  string
+	DesiredCount       *int
+	ForceNewDeployment bool
+}
+
+type UpdateServiceResult struct {
+	Service Service
+}
+
 type Service struct {
 	Name                 string
 	ARN                  string

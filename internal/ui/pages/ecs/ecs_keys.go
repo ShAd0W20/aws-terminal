@@ -8,6 +8,8 @@ var (
 	ecsEnterKey         = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select/detail"))
 	ecsBackKey          = key.NewBinding(key.WithKeys("b", "esc"), key.WithHelp("b/esc", "back"))
 	ecsRefreshKey       = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh"))
+	ecsUpdateServiceKey = key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "update"))
+	ecsToggleKey        = key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "toggle force"))
 	ecsSearchKey        = key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "search"))
 	ecsPagePrevKey      = key.NewBinding(key.WithKeys("left", "h", "pgup"), key.WithHelp("←/h", "prev page"))
 	ecsPageNextKey      = key.NewBinding(key.WithKeys("right", "l", "pgdown"), key.WithHelp("→/l", "next page"))

@@ -31,6 +31,40 @@ func (p *ECSPage) loadServicesCmd(profile, region, clusterARN string) tea.Cmd {
 		return servicesLoadedMsg{clusterARN: clusterARN, services: services, err: err}
 	}
 }
+func (p *ECSPage) loadTaskDefinitionsCmd(profile, region, familyPrefix string) tea.Cmd {
+	if p.updateCancel != nil {
+		p.updateCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	p.updateCancel = cancel
+	return func() tea.Msg {
+		definitions, err := p.service.ListTaskDefinitions(ctx, profile, region, familyPrefix)
+		return taskDefinitionsLoadedMsg{familyPrefix: familyPrefix, taskDefinitions: definitions, err: err}
+	}
+}
+
+func (p *ECSPage) updateServiceCmd(input domainecs.UpdateServiceInput) tea.Cmd {
+	if p.updateCancel != nil {
+		p.updateCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	p.updateCancel = cancel
+	clusterARN := input.ClusterARN
+	return func() tea.Msg {
+		result, err := p.service.UpdateService(ctx, input)
+		return serviceUpdatedMsg{clusterARN: clusterARN, result: result, err: err}
+	}
+}
+
+func (p *ECSPage) clearUpdateSuccessCmd(seq int, delay time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		<-timer.C
+		return updateSuccessClearMsg{seq: seq}
+	}
+}
+
 func (p *ECSPage) loadTasksCmd(profile, region, clusterARN string) tea.Cmd {
 	if p.tasksCancel != nil {
 		p.tasksCancel()
@@ -86,6 +120,10 @@ func (p *ECSPage) cancelResourceLoads() {
 		p.tasksCancel = nil
 	}
 	p.stopLogStreaming()
+	if p.updateCancel != nil {
+		p.updateCancel()
+		p.updateCancel = nil
+	}
 }
 
 func (p *ECSPage) stopLogStreaming() {
@@ -126,8 +164,27 @@ func (p *ECSPage) resetForSession() {
 	p.services = nil
 	p.tasks = nil
 	p.selectedTask = domainecs.Task{}
+	p.resetUpdateState()
 	p.taskDetailTab = taskDetailTabOverview
 	p.logTargetsByTaskDefinition = map[string][]domainecs.LogTarget{}
 	p.resetLogState()
 	p.searchInput.SetValue("")
+}
+
+func (p *ECSPage) resetUpdateState() {
+	if p.updateCancel != nil {
+		p.updateCancel()
+		p.updateCancel = nil
+	}
+	p.taskDefinitionsLoading = false
+	p.taskDefinitionsErr = ""
+	p.taskDefinitions = nil
+	p.taskDefinitionIndex = 0
+	p.taskDefinitionPaginator.Page = 0
+	p.updateFamilyPrefix = ""
+	p.desiredCountInput.SetValue("")
+	p.desiredCountInput.Blur()
+	p.updateForceNewDeployment = false
+	p.updatingService = false
+	p.updateErr = ""
 }
