@@ -51,6 +51,12 @@ func (p *ECSPage) View(state State, width, height int) string {
 		lines = append(lines, p.updateReviewLines()...)
 	case ecsStageUpdating:
 		lines = append(lines, p.updatingServiceLines()...)
+	case ecsStageStopTaskReason:
+		lines = append(lines, p.stopTaskReasonLines()...)
+	case ecsStageStopTaskReview:
+		lines = append(lines, p.stopTaskReviewLines()...)
+	case ecsStageStoppingTask:
+		lines = append(lines, p.stoppingTaskLines()...)
 	}
 	return styles.RenderBox(styles.PanelStyle, width, height, strings.Join(lines, "\n"))
 }
@@ -66,13 +72,21 @@ func (p *ECSPage) ShortHelp() []key.Binding {
 		return []key.Binding{ecsEnterKey, ecsBackKey, ecsTabHelpKey}
 	case ecsStageUpdateReview:
 		return []key.Binding{ecsToggleKey, ecsEnterKey, ecsBackKey, ecsTabHelpKey}
-	case ecsStageUpdating:
+	case ecsStageUpdating, ecsStageStoppingTask:
 		return []key.Binding{ecsBackKey, ecsTabHelpKey}
+	case ecsStageStopTaskReason:
+		return []key.Binding{ecsEnterKey, ecsBackKey, ecsTabHelpKey}
+	case ecsStageStopTaskReview:
+		return []key.Binding{ecsEnterKey, ecsBackKey, ecsTabHelpKey}
 	case ecsStageTaskDetail:
-		if p.taskDetailTab == taskDetailTabLogs {
-			return []key.Binding{ecsPrevTabKey, ecsNextTabKey, ecsPrevContainerKey, ecsNextContainerKey, ecsUpKey, ecsDownKey, ecsBackKey, ecsTabHelpKey}
+		stopKeys := []key.Binding{}
+		if isTaskStoppable(p.selectedTask, p.selectedCluster.ARN) {
+			stopKeys = append(stopKeys, ecsStopTaskKey)
 		}
-		return []key.Binding{ecsPrevTabKey, ecsNextTabKey, ecsBackKey, ecsTabHelpKey}
+		if p.taskDetailTab == taskDetailTabLogs {
+			return append([]key.Binding{ecsPrevTabKey, ecsNextTabKey, ecsPrevContainerKey, ecsNextContainerKey, ecsUpKey, ecsDownKey}, append(stopKeys, ecsBackKey, ecsTabHelpKey)...)
+		}
+		return append([]key.Binding{ecsPrevTabKey, ecsNextTabKey}, append(stopKeys, ecsBackKey, ecsTabHelpKey)...)
 	default:
 		return []key.Binding{ecsBackKey, ecsTabHelpKey}
 	}
@@ -459,6 +473,50 @@ func severityStyle(level string) lipgloss.Style {
 	default:
 		return lipgloss.NewStyle()
 	}
+}
+
+func (p *ECSPage) stopTaskReasonLines() []string {
+	lines := []string{styles.MutedStyle.Render("Step 1 of 2 · Stop task reason"), fmt.Sprintf("Cluster: %s", value(p.selectedCluster.Name)), fmt.Sprintf("Task: %s", value(p.selectedTask.ID)), "", p.stopReasonInput.View()}
+	if p.updateErr != "" {
+		lines = append(lines, "", styles.ErrorStyle.Render(p.updateErr))
+	}
+	lines = append(lines, "", styles.MutedStyle.Render("Enter continues · b/Esc cancels"))
+	return lines
+}
+
+func (p *ECSPage) stopTaskReviewLines() []string {
+	t := p.selectedTask
+	lines := []string{
+		styles.MutedStyle.Render("Step 2 of 2 · Review stop task"),
+		fmt.Sprintf("Cluster: %s", value(p.selectedCluster.Name)),
+		detailKV("Task ID", t.ID),
+		detailKV("Last status", t.LastStatus),
+		detailKV("Launch type", t.LaunchType),
+		detailKV("Task definition", t.TaskDefinition),
+		detailKV("Group", t.Group),
+		detailKV("Task ARN", t.ARN),
+		"",
+		detailKV("Stop reason", strings.TrimSpace(p.stopReasonInput.Value())),
+	}
+	if isServiceManagedTask(t) {
+		lines = append(lines, "", styles.StatusStyle.Render("ECS may launch a replacement task to maintain the service desired count."))
+	}
+	lines = append(lines, "", styles.MutedStyle.Render("Containers"))
+	if len(t.Containers) == 0 {
+		lines = append(lines, styles.MutedStyle.Render("No containers reported."))
+	}
+	for _, c := range t.Containers {
+		lines = append(lines, fmt.Sprintf("%s  %s  •  %s", statusLabel(c.LastStatus), value(c.Name), shortImage(c.Image)))
+	}
+	if p.updateErr != "" {
+		lines = append(lines, "", styles.ErrorStyle.Render(p.updateErr))
+	}
+	lines = append(lines, "", styles.MutedStyle.Render("Enter stops task · b/Esc returns"))
+	return lines
+}
+
+func (p *ECSPage) stoppingTaskLines() []string {
+	return []string{styles.MutedStyle.Render("Stopping task"), fmt.Sprintf("Cluster: %s", value(p.selectedCluster.Name)), fmt.Sprintf("Task: %s", value(p.selectedTask.ID)), "", styles.StatusStyle.Render(p.spinner.View() + " Sending StopTask request..."), styles.MutedStyle.Render("b/Esc cancels waiting; AWS may still complete the request.")}
 }
 
 func (p *ECSPage) taskOverviewLines() []string {

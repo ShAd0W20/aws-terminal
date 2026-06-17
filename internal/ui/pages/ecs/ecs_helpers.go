@@ -153,6 +153,54 @@ func serviceAttentionReason(s domainecs.Service) string {
 	return ""
 }
 
+func taskByARN(tasks []domainecs.Task, arn string) (domainecs.Task, bool) {
+	arn = strings.TrimSpace(arn)
+	if arn == "" {
+		return domainecs.Task{}, false
+	}
+	for _, task := range tasks {
+		if task.ARN == arn {
+			return task, true
+		}
+	}
+	return domainecs.Task{}, false
+}
+
+func nearestTaskIndexByARN(tasks []domainecs.Task, arn string, fallback int) int {
+	if len(tasks) == 0 {
+		return 0
+	}
+	arn = strings.TrimSpace(arn)
+	for i, task := range tasks {
+		if task.ARN == arn {
+			return i
+		}
+	}
+	if fallback < 0 {
+		return 0
+	}
+	if fallback >= len(tasks) {
+		return len(tasks) - 1
+	}
+	return fallback
+}
+
+func isTaskStoppable(t domainecs.Task, clusterARN string) bool {
+	if strings.TrimSpace(clusterARN) == "" || strings.TrimSpace(t.ARN) == "" {
+		return false
+	}
+	switch strings.ToUpper(strings.TrimSpace(t.LastStatus)) {
+	case "STOPPED", "STOPPING", "DEPROVISIONING":
+		return false
+	default:
+		return true
+	}
+}
+
+func isServiceManagedTask(t domainecs.Task) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(t.Group)), "service:")
+}
+
 func taskAttentionReason(t domainecs.Task) string {
 	if strings.TrimSpace(t.StoppedReason) != "" {
 		return t.StoppedReason

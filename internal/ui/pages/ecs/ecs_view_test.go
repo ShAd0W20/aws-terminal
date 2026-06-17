@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
+
 	domainecs "aws-terminal/internal/domain/ecs"
 )
 
@@ -88,6 +90,43 @@ func TestRenderLogViewportContentAutoFollowsAtBottom(t *testing.T) {
 	if !strings.Contains(p.logViewport.View(), "INFO one") || !strings.Contains(p.logViewport.View(), ":00") {
 		t.Fatalf("viewport missing compact timestamp/message: %q", p.logViewport.View())
 	}
+}
+
+func TestStopTaskHelpOnlyShownForStoppableTasks(t *testing.T) {
+	p := NewECSPage(fakeECSService{})
+	p.stage = ecsStageTaskDetail
+	p.selectedCluster = domainecs.Cluster{ARN: "cluster"}
+	p.selectedTask = domainecs.Task{ARN: "task", LastStatus: "RUNNING"}
+	if !helpContains(p.ShortHelp(), "stop task") {
+		t.Fatal("expected stop task help for running task")
+	}
+	p.selectedTask.LastStatus = "STOPPED"
+	if helpContains(p.ShortHelp(), "stop task") {
+		t.Fatal("did not expect stop task help for stopped task")
+	}
+}
+
+func TestStopTaskReviewShowsAuditContextAndServiceWarning(t *testing.T) {
+	p := NewECSPage(fakeECSService{})
+	p.selectedCluster = domainecs.Cluster{Name: "prod", ARN: "cluster"}
+	p.selectedTask = domainecs.Task{ID: "task", ARN: "task-arn", LastStatus: "RUNNING", LaunchType: "FARGATE", TaskDefinition: "api:2", Group: "service:api", Containers: []domainecs.Container{{Name: "api", Image: "123.dkr.ecr.eu-west-1.amazonaws.com/api:1", LastStatus: "RUNNING"}}}
+	p.stopReasonInput.SetValue("bad deploy")
+	view := strings.Join(p.stopTaskReviewLines(), "\n")
+	for _, want := range []string{"prod", "task", "FARGATE", "api:2", "bad deploy", "api:1", "replacement task"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("review missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func helpContains(bindings []key.Binding, text string) bool {
+	for _, binding := range bindings {
+		_, desc := binding.Help().Key, binding.Help().Desc
+		if strings.Contains(desc, text) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestUpdateReviewShowsOldAndNewValues(t *testing.T) {

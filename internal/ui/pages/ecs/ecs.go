@@ -20,6 +20,7 @@ type ECSService interface {
 	ListTaskDefinitions(ctx context.Context, profileName, region, familyPrefix string) ([]domainecs.TaskDefinitionSummary, error)
 	ListTasks(ctx context.Context, profileName, region, clusterARN string) ([]domainecs.Task, error)
 	UpdateService(ctx context.Context, input domainecs.UpdateServiceInput) (domainecs.UpdateServiceResult, error)
+	StopTask(ctx context.Context, input domainecs.StopTaskInput) (domainecs.StopTaskResult, error)
 	DescribeTaskLogTargets(ctx context.Context, profileName, region, taskDefinitionARN, taskID string) ([]domainecs.LogTarget, error)
 	FetchTaskLogEvents(ctx context.Context, profileName, region string, target domainecs.LogTarget, nextToken string, lookback time.Duration, limit int32) (domainecs.LogEventsPage, error)
 }
@@ -35,6 +36,9 @@ const (
 	ecsStageUpdateDesiredCount
 	ecsStageUpdateReview
 	ecsStageUpdating
+	ecsStageStopTaskReason
+	ecsStageStopTaskReview
+	ecsStageStoppingTask
 )
 
 type ecsTab int
@@ -92,6 +96,11 @@ type serviceUpdatedMsg struct {
 	result     domainecs.UpdateServiceResult
 	err        error
 }
+type taskStoppedMsg struct {
+	clusterARN string
+	result     domainecs.StopTaskResult
+	err        error
+}
 type updateSuccessClearMsg struct{ seq int }
 
 func (clustersLoadedMsg) OwnerPageID() string        { return "ecs" }
@@ -102,6 +111,7 @@ func (taskLogEventsLoadedMsg) OwnerPageID() string   { return "ecs" }
 func (taskLogPollTickMsg) OwnerPageID() string       { return "ecs" }
 func (taskDefinitionsLoadedMsg) OwnerPageID() string { return "ecs" }
 func (serviceUpdatedMsg) OwnerPageID() string        { return "ecs" }
+func (taskStoppedMsg) OwnerPageID() string           { return "ecs" }
 func (updateSuccessClearMsg) OwnerPageID() string    { return "ecs" }
 
 type ECSPage struct {
@@ -146,6 +156,9 @@ type ECSPage struct {
 	taskPaginator              paginator.Model
 	selectedTask               domainecs.Task
 	taskDetailTab              taskDetailTab
+	stopReasonInput            textinput.Model
+	stopTaskOriginTab          taskDetailTab
+	stoppingTask               bool
 	logTargetsByTaskDefinition map[string][]domainecs.LogTarget
 	logTargetsLoading          bool
 	logTargetsErr              string
@@ -191,13 +204,17 @@ func NewECSPage(service ECSService) *ECSPage {
 	desired.Prompt = "Desired tasks: "
 	desired.Placeholder = "1"
 	desired.CharLimit = 6
+	stopReason := textinput.New()
+	stopReason.Prompt = "Stop reason: "
+	stopReason.Placeholder = "Stopped from aws-terminal"
+	stopReason.CharLimit = 255
 	vp := viewport.New(80, 12)
-	return &ECSPage{service: service, stage: ecsStageClusters, searchInput: search, desiredCountInput: desired, spinner: spin, clusterTable: ct, clusterPaginator: cp, serviceTable: st, servicePaginator: sp, taskTable: tt, taskPaginator: tp, taskDefinitionPaginator: dp, logTargetsByTaskDefinition: map[string][]domainecs.LogTarget{}, logSeenEventIDs: map[string]struct{}{}, logViewport: vp}
+	return &ECSPage{service: service, stage: ecsStageClusters, searchInput: search, desiredCountInput: desired, stopReasonInput: stopReason, spinner: spin, clusterTable: ct, clusterPaginator: cp, serviceTable: st, servicePaginator: sp, taskTable: tt, taskPaginator: tp, taskDefinitionPaginator: dp, logTargetsByTaskDefinition: map[string][]domainecs.LogTarget{}, logSeenEventIDs: map[string]struct{}{}, logViewport: vp}
 }
 
 func (*ECSPage) ID() string          { return "ecs" }
 func (*ECSPage) Title() string       { return "ECS" }
 func (*ECSPage) Description() string { return "Browse ECS clusters, services, and tasks." }
 func (p *ECSPage) HasFocusedInput() bool {
-	return p.searchInput.Focused() || p.desiredCountInput.Focused()
+	return p.searchInput.Focused() || p.desiredCountInput.Focused() || p.stopReasonInput.Focused()
 }

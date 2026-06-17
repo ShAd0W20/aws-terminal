@@ -56,6 +56,19 @@ func (p *ECSPage) updateServiceCmd(input domainecs.UpdateServiceInput) tea.Cmd {
 	}
 }
 
+func (p *ECSPage) stopTaskCmd(input domainecs.StopTaskInput) tea.Cmd {
+	if p.updateCancel != nil {
+		p.updateCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	p.updateCancel = cancel
+	clusterARN := input.ClusterARN
+	return func() tea.Msg {
+		result, err := p.service.StopTask(ctx, input)
+		return taskStoppedMsg{clusterARN: clusterARN, result: result, err: err}
+	}
+}
+
 func (p *ECSPage) clearUpdateSuccessCmd(seq int, delay time.Duration) tea.Cmd {
 	return func() tea.Msg {
 		timer := time.NewTimer(delay)
@@ -184,7 +197,12 @@ func (p *ECSPage) resetUpdateState() {
 	p.updateFamilyPrefix = ""
 	p.desiredCountInput.SetValue("")
 	p.desiredCountInput.Blur()
+	p.stopReasonInput.Blur()
 	p.updateForceNewDeployment = false
 	p.updatingService = false
+	p.stopReasonInput.SetValue("")
+	p.stopReasonInput.Blur()
+	p.stopTaskOriginTab = taskDetailTabOverview
+	p.stoppingTask = false
 	p.updateErr = ""
 }

@@ -28,6 +28,9 @@ func (fakeECSService) ListTasks(context.Context, string, string, string) ([]doma
 func (fakeECSService) UpdateService(context.Context, domainecs.UpdateServiceInput) (domainecs.UpdateServiceResult, error) {
 	return domainecs.UpdateServiceResult{}, nil
 }
+func (fakeECSService) StopTask(context.Context, domainecs.StopTaskInput) (domainecs.StopTaskResult, error) {
+	return domainecs.StopTaskResult{Task: domainecs.Task{ID: "task", ARN: "task-arn", LastStatus: "STOPPING", DesiredStatus: "STOPPED"}}, nil
+}
 func (fakeECSService) DescribeTaskLogTargets(context.Context, string, string, string, string) ([]domainecs.LogTarget, error) {
 	return []domainecs.LogTarget{{ContainerName: "app", LogGroup: "group", LogStream: "prefix/app/task", Supported: true}, {ContainerName: "sidecar", Supported: false, Message: "No awslogs CloudWatch Logs configuration found for container sidecar."}}, nil
 }
@@ -124,6 +127,58 @@ func TestLogPollingStopsWhenPageNotFocused(t *testing.T) {
 	cmd := p.Update(taskLogPollTickMsg{taskARN: "task-arn", containerName: "app"}, state)
 	if cmd != nil || p.logStreaming {
 		t.Fatalf("polling should stop without focused logs view")
+	}
+}
+
+func TestStartStopTaskRequiresStoppableTaskAndPrefillsReason(t *testing.T) {
+	p := NewECSPage(fakeECSService{})
+	p.stage = ecsStageTaskDetail
+	p.selectedCluster = domainecs.Cluster{Name: "prod", ARN: "cluster"}
+	p.selectedTask = domainecs.Task{ID: "task", ARN: "task-arn", LastStatus: "RUNNING"}
+	cmd := p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}, testState())
+	if p.stage != ecsStageStopTaskReason || p.stopReasonInput.Value() != defaultStopTaskReason || !p.stopReasonInput.Focused() || cmd == nil {
+		t.Fatalf("stop workflow not started correctly: stage=%v reason=%q focused=%v cmd=%v", p.stage, p.stopReasonInput.Value(), p.stopReasonInput.Focused(), cmd)
+	}
+}
+
+func TestStopTaskBlockedForTerminalStatuses(t *testing.T) {
+	for _, status := range []string{"STOPPED", "STOPPING", "DEPROVISIONING"} {
+		t.Run(status, func(t *testing.T) {
+			p := NewECSPage(fakeECSService{})
+			p.stage = ecsStageTaskDetail
+			p.selectedCluster = domainecs.Cluster{Name: "prod", ARN: "cluster"}
+			p.selectedTask = domainecs.Task{ID: "task", ARN: "task-arn", LastStatus: status}
+			p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}, testState())
+			if p.stage != ecsStageTaskDetail {
+				t.Fatalf("stop workflow should not start for %s", status)
+			}
+		})
+	}
+}
+
+func TestStopTaskReasonReviewAndSuccess(t *testing.T) {
+	p := NewECSPage(fakeECSService{})
+	p.stage = ecsStageTaskDetail
+	p.taskDetailTab = taskDetailTabLogs
+	p.logStreaming = true
+	p.selectedCluster = domainecs.Cluster{Name: "prod", ARN: "cluster"}
+	p.selectedTask = domainecs.Task{ID: "task", ARN: "task-arn", LastStatus: "RUNNING"}
+	p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}, testState())
+	if p.logStreaming || p.stopTaskOriginTab != taskDetailTabLogs {
+		t.Fatalf("expected log streaming stopped and origin tab remembered")
+	}
+	p.stopReasonInput.SetValue("bad deploy")
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter}, testState())
+	if p.stage != ecsStageStopTaskReview {
+		t.Fatalf("stage = %v", p.stage)
+	}
+	cmd := p.Update(tea.KeyMsg{Type: tea.KeyEnter}, testState())
+	if p.stage != ecsStageStoppingTask || !p.stoppingTask || cmd == nil {
+		t.Fatalf("expected stopping stage, stage=%v stopping=%v cmd=%v", p.stage, p.stoppingTask, cmd)
+	}
+	p.Update(taskStoppedMsg{clusterARN: "cluster", result: domainecs.StopTaskResult{Task: domainecs.Task{ID: "task", ARN: "task-arn", LastStatus: "STOPPING"}}}, testState())
+	if p.stage != ecsStageTaskDetail || p.taskDetailTab != taskDetailTabOverview || p.selectedTask.LastStatus != "STOPPING" || p.updateSuccess == "" {
+		t.Fatalf("unexpected success state: stage=%v tab=%v task=%#v success=%q", p.stage, p.taskDetailTab, p.selectedTask, p.updateSuccess)
 	}
 }
 

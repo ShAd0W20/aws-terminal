@@ -35,18 +35,22 @@ func (p *ECSPage) SetFocused(focused bool) tea.Cmd {
 	if !focused {
 		p.searchInput.Blur()
 		p.desiredCountInput.Blur()
+		p.stopReasonInput.Blur()
 		p.stopLogStreaming()
 		return nil
 	}
 	if p.stage == ecsStageUpdateDesiredCount {
 		return p.desiredCountInput.Focus()
 	}
+	if p.stage == ecsStageStopTaskReason {
+		return p.stopReasonInput.Focus()
+	}
 	return nil
 }
 func (p *ECSPage) Update(msg tea.Msg, state State) tea.Cmd {
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
-		if !p.loadingClusters && !p.servicesLoading && !p.tasksLoading && !p.logTargetsLoading && !p.logEventsLoading && !p.taskDefinitionsLoading && !p.updatingService {
+		if !p.loadingClusters && !p.servicesLoading && !p.tasksLoading && !p.logTargetsLoading && !p.logEventsLoading && !p.taskDefinitionsLoading && !p.updatingService && !p.stoppingTask {
 			return nil
 		}
 		var cmd tea.Cmd
@@ -102,9 +106,15 @@ func (p *ECSPage) Update(msg tea.Msg, state State) tea.Cmd {
 			p.tasksErr = fmt.Sprintf("Unable to load ECS tasks: %v", msg.err)
 			return nil
 		}
+		previousARN := p.selectedTask.ARN
 		p.tasks = msg.tasks
 		p.tasksErr = ""
-		p.taskIndex = 0
+		p.taskIndex = nearestTaskIndexByARN(p.tasks, previousARN, p.taskIndex)
+		if p.stage == ecsStageTaskDetail && previousARN != "" {
+			if task, ok := taskByARN(p.tasks, previousARN); ok {
+				p.selectedTask = task
+			}
+		}
 		p.syncTaskTable()
 		return nil
 	case taskDefinitionsLoadedMsg:
@@ -151,6 +161,35 @@ func (p *ECSPage) Update(msg tea.Msg, state State) tea.Cmd {
 			p.tasksErr = ""
 			cmds = append(cmds, p.spinner.Tick, p.loadServicesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN), p.loadTasksCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN))
 		}
+		return tea.Batch(cmds...)
+	case taskStoppedMsg:
+		if msg.clusterARN != p.selectedCluster.ARN {
+			return nil
+		}
+		p.stoppingTask = false
+		p.updateCancel = nil
+		cmds := []tea.Cmd{}
+		if state.ActiveSession != nil {
+			p.servicesLoading = true
+			p.tasksLoading = true
+			p.servicesErr = ""
+			p.tasksErr = ""
+			cmds = append(cmds, p.spinner.Tick, p.loadServicesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN), p.loadTasksCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN))
+		}
+		if errors.Is(msg.err, context.Canceled) {
+			return tea.Batch(cmds...)
+		}
+		if msg.err != nil {
+			p.updateErr = fmt.Sprintf("Unable to stop task: %v", msg.err)
+			p.stage = ecsStageStopTaskReview
+			return tea.Batch(cmds...)
+		}
+		p.selectedTask = msg.result.Task
+		p.taskDetailTab = taskDetailTabOverview
+		p.stage = ecsStageTaskDetail
+		p.updateSuccessSeq++
+		p.updateSuccess = "Stop task requested. Refreshing service and task data..."
+		cmds = append(cmds, p.clearUpdateSuccessCmd(p.updateSuccessSeq, 4*time.Second))
 		return tea.Batch(cmds...)
 	case updateSuccessClearMsg:
 		if msg.seq == p.updateSuccessSeq {
@@ -248,6 +287,18 @@ func (p *ECSPage) Update(msg tea.Msg, state State) tea.Cmd {
 			p.updateCancel = nil
 			p.updatingService = false
 			p.stage = ecsStageUpdateReview
+			return nil
+		}
+	case ecsStageStopTaskReason:
+		return p.updateStopTaskReasonStage(msg, state)
+	case ecsStageStopTaskReview:
+		return p.updateStopTaskReviewStage(k, state)
+	case ecsStageStoppingTask:
+		if key.Matches(k, ecsBackKey) && p.updateCancel != nil {
+			p.updateCancel()
+			p.updateCancel = nil
+			p.stoppingTask = false
+			p.stage = ecsStageStopTaskReview
 			return nil
 		}
 	case ecsStageTaskDetail:
@@ -585,6 +636,9 @@ func (p *ECSPage) updateTaskDetail(k tea.KeyMsg, state State) tea.Cmd {
 		p.stage = ecsStageResources
 		p.taskDetailTab = taskDetailTabOverview
 		return nil
+	}
+	if key.Matches(k, ecsStopTaskKey) {
+		return p.startStopTask(state)
 	}
 	if key.Matches(k, ecsPrevTabKey) || key.Matches(k, ecsNextTabKey) {
 		if p.taskDetailTab == taskDetailTabOverview {
