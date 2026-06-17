@@ -34,6 +34,18 @@ type UpdateServiceResult struct {
 	Service Service
 }
 
+type StopTaskInput struct {
+	ProfileName string
+	Region      string
+	ClusterARN  string
+	Task        string
+	Reason      string
+}
+
+type StopTaskResult struct {
+	Task Task
+}
+
 type Service struct {
 	Name                 string
 	ARN                  string

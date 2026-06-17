@@ -14,6 +14,18 @@ func TestTaskDefinitionSummaryFromARNParsesFamilyRevision(t *testing.T) {
 	}
 }
 
+func TestTaskFromSDKMapsStoppedTaskFields(t *testing.T) {
+	task := taskFromSDK(ecstypes.Task{
+		TaskArn:       aws.String("arn:aws:ecs:eu-west-1:123:task/backend/abc123"),
+		LastStatus:    aws.String("STOPPING"),
+		DesiredStatus: aws.String("STOPPED"),
+		StoppedReason: aws.String("Stopped from aws-terminal"),
+	})
+	if task.ID != "abc123" || task.LastStatus != "STOPPING" || task.DesiredStatus != "STOPPED" || task.StoppedReason != "Stopped from aws-terminal" {
+		t.Fatalf("unexpected stopped task mapping: %#v", task)
+	}
+}
+
 func TestTaskFromSDKUsesContainerNetworkInterfacePrivateIP(t *testing.T) {
 	task := taskFromSDK(ecstypes.Task{
 		TaskArn: aws.String("arn:aws:ecs:eu-west-1:123:task/backend/abc123"),

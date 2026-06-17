@@ -175,6 +175,23 @@ func (s *Service) UpdateService(ctx context.Context, input domainecs.UpdateServi
 	return domainecs.UpdateServiceResult{Service: serviceFromSDK(*out.Service)}, nil
 }
 
+func (s *Service) StopTask(ctx context.Context, input domainecs.StopTaskInput) (domainecs.StopTaskResult, error) {
+	ctx, cancel := awsclients.WithTimeout(ctx, s.clients.OperationTimeout())
+	defer cancel()
+	client, err := s.client(ctx, input.ProfileName, input.Region)
+	if err != nil {
+		return domainecs.StopTaskResult{}, err
+	}
+	out, err := client.StopTask(ctx, &awsecsdk.StopTaskInput{Cluster: aws.String(strings.TrimSpace(input.ClusterARN)), Task: aws.String(strings.TrimSpace(input.Task)), Reason: aws.String(strings.TrimSpace(input.Reason))})
+	if err != nil {
+		return domainecs.StopTaskResult{}, err
+	}
+	if out.Task == nil {
+		return domainecs.StopTaskResult{}, fmt.Errorf("stopped task not returned")
+	}
+	return domainecs.StopTaskResult{Task: taskFromSDK(*out.Task)}, nil
+}
+
 func (s *Service) DescribeTaskLogTargets(ctx context.Context, profileName, region, taskDefinitionARN, taskID string) ([]domainecs.LogTarget, error) {
 	ctx, cancel := awsclients.WithTimeout(ctx, s.clients.OperationTimeout())
 	defer cancel()

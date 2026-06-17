@@ -108,6 +108,27 @@ func (s *Service) UpdateService(ctx context.Context, input domainecs.UpdateServi
 	return s.api.UpdateService(ctx, input)
 }
 
+func (s *Service) StopTask(ctx context.Context, input domainecs.StopTaskInput) (domainecs.StopTaskResult, error) {
+	input.ProfileName = strings.TrimSpace(input.ProfileName)
+	input.Region = strings.TrimSpace(input.Region)
+	input.ClusterARN = strings.TrimSpace(input.ClusterARN)
+	input.Task = strings.TrimSpace(input.Task)
+	input.Reason = strings.TrimSpace(input.Reason)
+	if input.ProfileName == "" {
+		return domainecs.StopTaskResult{}, fmt.Errorf("profile name is required")
+	}
+	if input.ClusterARN == "" {
+		return domainecs.StopTaskResult{}, fmt.Errorf("cluster ARN is required")
+	}
+	if input.Task == "" {
+		return domainecs.StopTaskResult{}, fmt.Errorf("task is required")
+	}
+	if input.Reason == "" {
+		return domainecs.StopTaskResult{}, fmt.Errorf("stop reason is required")
+	}
+	return s.api.StopTask(ctx, input)
+}
+
 func (s *Service) DescribeTaskLogTargets(ctx context.Context, profileName, region, taskDefinitionARN, taskID string) ([]domainecs.LogTarget, error) {
 	profileName = strings.TrimSpace(profileName)
 	taskDefinitionARN = strings.TrimSpace(taskDefinitionARN)

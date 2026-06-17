@@ -15,6 +15,7 @@ type fakeAPI struct {
 	taskDefinitions []domainecs.TaskDefinitionSummary
 	tasks           []domainecs.Task
 	updateInput     domainecs.UpdateServiceInput
+	stopInput       domainecs.StopTaskInput
 	fetchLookback   time.Duration
 	fetchLimit      int32
 }
@@ -34,6 +35,10 @@ func (f fakeAPI) ListTasks(context.Context, string, string, string) ([]domainecs
 func (f *fakeAPI) UpdateService(_ context.Context, input domainecs.UpdateServiceInput) (domainecs.UpdateServiceResult, error) {
 	f.updateInput = input
 	return domainecs.UpdateServiceResult{Service: domainecs.Service{Name: input.Service, ARN: input.Service, TaskDefinitionARN: input.TaskDefinitionARN}}, nil
+}
+func (f *fakeAPI) StopTask(_ context.Context, input domainecs.StopTaskInput) (domainecs.StopTaskResult, error) {
+	f.stopInput = input
+	return domainecs.StopTaskResult{Task: domainecs.Task{ARN: input.Task, LastStatus: "STOPPING"}}, nil
 }
 func (f fakeAPI) DescribeTaskLogTargets(context.Context, string, string, string, string) ([]domainecs.LogTarget, error) {
 	return []domainecs.LogTarget{{ContainerName: "app", Supported: true, LogGroup: "group", LogStream: "prefix/app/task"}}, nil
@@ -109,6 +114,30 @@ func TestUpdateServiceValidatesAndTrimsInput(t *testing.T) {
 	}
 	if api.updateInput.ProfileName != "dev" || api.updateInput.Region != "eu-west-1" || api.updateInput.ClusterARN != "cluster" || api.updateInput.Service != "svc" || api.updateInput.TaskDefinitionARN != "td" {
 		t.Fatalf("input was not trimmed: %#v", api.updateInput)
+	}
+}
+
+func TestStopTaskValidatesAndTrimsInput(t *testing.T) {
+	api := &fakeAPI{}
+	svc := NewService(api)
+	for name, input := range map[string]domainecs.StopTaskInput{
+		"profile": {ClusterARN: "cluster", Task: "task", Reason: "reason"},
+		"cluster": {ProfileName: "dev", Task: "task", Reason: "reason"},
+		"task":    {ProfileName: "dev", ClusterARN: "cluster", Reason: "reason"},
+		"reason":  {ProfileName: "dev", ClusterARN: "cluster", Task: "task"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := svc.StopTask(context.Background(), input); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+	_, err := svc.StopTask(context.Background(), domainecs.StopTaskInput{ProfileName: " dev ", Region: " eu-west-1 ", ClusterARN: " cluster ", Task: " task ", Reason: " reason "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if api.stopInput.ProfileName != "dev" || api.stopInput.Region != "eu-west-1" || api.stopInput.ClusterARN != "cluster" || api.stopInput.Task != "task" || api.stopInput.Reason != "reason" {
+		t.Fatalf("input was not trimmed: %#v", api.stopInput)
 	}
 }
 
