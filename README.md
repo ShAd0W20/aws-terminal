@@ -188,10 +188,11 @@ Docker must be running locally for image discovery and push workflows.
 - Open service details to see deployment health, desired/running/pending counts, network configuration, runtime settings, and identifiers.
 - Update an ECS service from its detail view by selecting an available task definition revision for the service family, changing desired task count, or forcing a new deployment. Updates always show a review screen before AWS changes are submitted.
 - Open task details to quickly see status, health, private IP, availability zone, runtime, connectivity, containers, and stopped/failure reasons.
+- Stop a running ECS task from task details with an editable stop reason and review screen. The stop reason is sent to ECS for audit context.
 - Switch task detail tabs between **Overview** and **Logs**. Logs support ECS `awslogs` CloudWatch Logs streams, load the last 15 minutes initially, and continue polling while the Logs tab is actively viewed.
 - In the Logs tab, scroll through the viewport with `↑`/`↓` or `k`/`j`, switch task-detail tabs with `[`/`]`, and switch log containers with `ctrl+h`/`ctrl+l`.
 - Required IAM permissions for task logs include ECS task-definition read access, such as `ecs:DescribeTaskDefinition`, and CloudWatch Logs access, such as `logs:GetLogEvents`.
-- Required IAM permissions for service updates include `ecs:ListTaskDefinitions` and `ecs:UpdateService`, plus any `iam:PassRole` permissions required by the selected task definition.
+- Required IAM permissions for service updates include `ecs:ListTaskDefinitions` and `ecs:UpdateService`, plus any `iam:PassRole` permissions required by the selected task definition. Required IAM permissions for stopping tasks include `ecs:StopTask`.
 
 ## Safety model
 
