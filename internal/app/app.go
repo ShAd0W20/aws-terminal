@@ -9,12 +9,14 @@ import (
 	appecs "aws-terminal/internal/application/ecs"
 	apps3 "aws-terminal/internal/application/s3"
 	appsession "aws-terminal/internal/application/session"
+	appsqs "aws-terminal/internal/application/sqs"
 	"aws-terminal/internal/config"
 	"aws-terminal/internal/infrastructure/awscloudfront"
 	"aws-terminal/internal/infrastructure/awsconfig"
 	"aws-terminal/internal/infrastructure/awsecr"
 	"aws-terminal/internal/infrastructure/awsecs"
 	"aws-terminal/internal/infrastructure/awss3"
+	"aws-terminal/internal/infrastructure/awssqs"
 	"aws-terminal/internal/infrastructure/awssso"
 	"aws-terminal/internal/infrastructure/localdocker"
 	"aws-terminal/internal/ui/shell"
@@ -30,10 +32,11 @@ func Run(version string) error {
 	dockerService, _ := localdocker.NewService()
 	ecrService := appecr.NewService(awsecr.NewService(), dockerService)
 	ecsService := appecs.NewService(awsecs.NewService())
+	sqsService := appsqs.NewService(awssqs.NewService())
 	preferenceStore, _ := config.NewFilePreferenceStore()
 	updateService := NewUpdateService(version)
 
-	pageRegistry := DefaultPages(s3Service, cloudFrontService, ecrService, ecsService, preferenceStore)
+	pageRegistry := DefaultPages(s3Service, cloudFrontService, ecrService, ecsService, sqsService, preferenceStore)
 
 	program := tea.NewProgram(
 		shell.NewModelWithPreferencesAndUpdates(sessionService, authService, pageRegistry, preferenceStore, updateService),
