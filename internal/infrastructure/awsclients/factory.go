@@ -16,6 +16,7 @@ import (
 	awsecrsdk "github.com/aws/aws-sdk-go-v2/service/ecr"
 	awsecssdk "github.com/aws/aws-sdk-go-v2/service/ecs"
 	awss3sdk "github.com/aws/aws-sdk-go-v2/service/s3"
+	awssqssdk "github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
@@ -73,6 +74,7 @@ type Factory struct {
 	mu                    sync.RWMutex
 	configs               map[string]aws.Config
 	s3Clients             map[string]*awss3sdk.Client
+	sqsClients            map[string]*awssqssdk.Client
 	cloudFrontClients     map[string]*awscloudfrontsdk.Client
 	cloudWatchLogsClients map[string]*awscloudwatchlogssdk.Client
 	ecrClients            map[string]*awsecrsdk.Client
@@ -90,6 +92,7 @@ func NewFactoryWithOptions(options Options) *Factory {
 		opts:                  normalizeOptions(options),
 		configs:               map[string]aws.Config{},
 		s3Clients:             map[string]*awss3sdk.Client{},
+		sqsClients:            map[string]*awssqssdk.Client{},
 		cloudFrontClients:     map[string]*awscloudfrontsdk.Client{},
 		cloudWatchLogsClients: map[string]*awscloudwatchlogssdk.Client{},
 		ecrClients:            map[string]*awsecrsdk.Client{},
@@ -207,6 +210,34 @@ func (f *Factory) S3(ctx context.Context, profileName, region string) (*awss3sdk
 		return existing, nil
 	}
 	f.s3Clients[key] = client
+	f.mu.Unlock()
+	return client, nil
+}
+
+func (f *Factory) SQS(ctx context.Context, profileName, region string) (*awssqssdk.Client, error) {
+	if f == nil {
+		f = Default()
+	}
+	key := CacheKey(profileName, region)
+	f.mu.RLock()
+	client, ok := f.sqsClients[key]
+	f.mu.RUnlock()
+	if ok {
+		return client, nil
+	}
+
+	cfg, err := f.Config(ctx, profileName, region)
+	if err != nil {
+		return nil, err
+	}
+	client = awssqssdk.NewFromConfig(cfg)
+
+	f.mu.Lock()
+	if existing, ok := f.sqsClients[key]; ok {
+		f.mu.Unlock()
+		return existing, nil
+	}
+	f.sqsClients[key] = client
 	f.mu.Unlock()
 	return client, nil
 }
