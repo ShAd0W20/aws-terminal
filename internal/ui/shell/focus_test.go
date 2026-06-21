@@ -1,13 +1,12 @@
 package shell
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"testing"
-
-	"aws-terminal/internal/ui/pages"
 )
 
 func newTestShellModelWithPages(pageIDs ...string) Model {
-	registry := make([]pages.Page, 0, len(pageIDs))
+	registry := make([]pageapi.Page, 0, len(pageIDs))
 	for _, id := range pageIDs {
 		registry = append(registry, &testPage{id: id})
 	}

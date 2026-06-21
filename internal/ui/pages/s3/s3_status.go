@@ -5,7 +5,7 @@ import (
 	"aws-terminal/internal/ui/workflow"
 )
 
-func (p *S3Page) PageStatus(State) pageapi.Status {
+func (p *S3Page) PageStatus(pageapi.State) pageapi.Status {
 	return workflow.FirstStatus(
 		workflow.Error(p.bucketErr),
 		workflow.Error(p.sourceErr),

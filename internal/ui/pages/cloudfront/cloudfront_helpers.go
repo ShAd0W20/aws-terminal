@@ -2,21 +2,7 @@ package cloudfront
 
 import (
 	"strings"
-
-	"aws-terminal/internal/ui/workflow"
 )
-
-func valueOrFallback(value, fallback string) string {
-	return workflow.ValueOrFallback(value, fallback)
-}
-
-func activeRegionFromState(state State) string {
-	return workflow.ActiveRegion(state)
-}
-
-func cloudFrontSessionKey(state State) string {
-	return workflow.SessionKey(state)
-}
 
 func parseInvalidationPaths(value string) []string {
 	fields := strings.FieldsFunc(value, func(r rune) bool {

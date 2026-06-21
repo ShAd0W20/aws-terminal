@@ -1,11 +1,10 @@
 package shell
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-
-	"aws-terminal/internal/ui/pages"
 )
 
 func TestPaletteOpensAndCloses(t *testing.T) {
@@ -53,7 +52,7 @@ func TestPaletteRunsOpenPageAction(t *testing.T) {
 
 func TestPaletteViewRendersActions(t *testing.T) {
 	model := Model{
-		pageRegistry: []pages.Page{&testPage{id: "dashboard"}},
+		pageRegistry: []pageapi.Page{&testPage{id: "dashboard"}},
 		pageList:     newSidebarListModel(),
 		paletteOpen:  true,
 	}

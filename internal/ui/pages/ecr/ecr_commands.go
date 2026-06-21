@@ -1,6 +1,8 @@
 package ecr
 
 import (
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 	"context"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -66,12 +68,12 @@ func (p *ECRPage) loadLocalImagesCmd() tea.Cmd {
 	}
 }
 
-func (p *ECRPage) buildPlanCmd(state State) tea.Cmd {
+func (p *ECRPage) buildPlanCmd(state pageapi.State) tea.Cmd {
 	if state.ActiveSession == nil {
 		return nil
 	}
 	source := p.selectedSourceImage()
-	input := appsecr.BuildPushPlanInput{Profile: state.ActiveSession.Profile, Region: activeRegion(state), RepositoryName: p.selectedRepository.Name, RepositoryURI: p.selectedRepository.URI, SourceImage: source, DestinationTag: p.tagInput.Value()}
+	input := appsecr.BuildPushPlanInput{Profile: state.ActiveSession.Profile, Region: workflow.ActiveRegion(state), RepositoryName: p.selectedRepository.Name, RepositoryURI: p.selectedRepository.URI, SourceImage: source, DestinationTag: p.tagInput.Value()}
 	return func() tea.Msg {
 		plan, err := p.service.BuildPushPlan(input)
 		return pushPlanBuiltMsg{plan: plan, err: err}

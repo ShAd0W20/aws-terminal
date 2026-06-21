@@ -5,7 +5,7 @@ import (
 	"aws-terminal/internal/ui/workflow"
 )
 
-func (p *CloudFrontPage) PageStatus(State) pageapi.Status {
+func (p *CloudFrontPage) PageStatus(pageapi.State) pageapi.Status {
 	return workflow.FirstStatus(
 		workflow.Error(p.loadErr),
 		workflow.Error(p.createErr),

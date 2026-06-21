@@ -1,6 +1,7 @@
 package cloudfront
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"context"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestSessionChangeResetsAndStartsDistributionLoad(t *testing.T) {
 	page.invalidation = &domaincloudfront.Invalidation{ID: "old"}
 	page.selectedDistribution = domaincloudfront.Distribution{ID: "old-dist"}
 
-	cmd := page.OnStateChanged(State{ActiveSession: &domainsession.Session{Profile: "profile-a", Region: "us-east-1"}})
+	cmd := page.OnStateChanged(pageapi.State{ActiveSession: &domainsession.Session{Profile: "profile-a", Region: "us-east-1"}})
 	if cmd == nil {
 		t.Fatal("expected distribution load command")
 	}
@@ -69,7 +70,7 @@ func TestDistributionEnterMovesToPathsStage(t *testing.T) {
 
 func TestInvalidationLifecycleTransitionsToCompleted(t *testing.T) {
 	page := NewCloudFrontPage(staticCloudFrontService{})
-	state := State{ActiveSession: &domainsession.Session{Profile: "profile-a", Region: "us-east-1"}}
+	state := pageapi.State{ActiveSession: &domainsession.Session{Profile: "profile-a", Region: "us-east-1"}}
 
 	cmd := page.Update(cloudFrontInvalidationCreatedMsg{invalidation: domaincloudfront.Invalidation{ID: "INV1", DistributionID: "DIST1", Status: "InProgress", CreatedAt: time.Now()}}, state)
 	if cmd == nil {

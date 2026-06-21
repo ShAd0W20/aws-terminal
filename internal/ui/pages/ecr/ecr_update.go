@@ -1,6 +1,8 @@
 package ecr
 
 import (
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 	"context"
 	"errors"
 	"fmt"
@@ -10,8 +12,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func (p *ECRPage) OnStateChanged(state State) tea.Cmd {
-	sessionKey := ecrSessionKey(state)
+func (p *ECRPage) OnStateChanged(state pageapi.State) tea.Cmd {
+	sessionKey := workflow.SessionKey(state)
 	if sessionKey != p.sessionKey {
 		p.sessionKey = sessionKey
 		p.resetForSession()
@@ -21,7 +23,7 @@ func (p *ECRPage) OnStateChanged(state State) tea.Cmd {
 	}
 	p.loadingRepositories = true
 	p.repositoryErr = ""
-	return p.loadRepositoriesCmd(state.ActiveSession.Profile, activeRegion(state), sessionKey)
+	return p.loadRepositoriesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), sessionKey)
 }
 
 func (p *ECRPage) SetFocused(focused bool) tea.Cmd {
@@ -36,7 +38,7 @@ func (p *ECRPage) SetFocused(focused bool) tea.Cmd {
 	return nil
 }
 
-func (p *ECRPage) Update(msg tea.Msg, state State) tea.Cmd {
+func (p *ECRPage) Update(msg tea.Msg, state pageapi.State) tea.Cmd {
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
 		if !p.pushing && !p.loadingRepositories && !p.imagesLoading && !p.localLoading {
@@ -83,7 +85,7 @@ func (p *ECRPage) Update(msg tea.Msg, state State) tea.Cmd {
 		if state.ActiveSession == nil {
 			return nil
 		}
-		return tea.Batch(p.spinner.Tick, p.loadImagesCmd(state.ActiveSession.Profile, activeRegion(state), msg.repository.Name))
+		return tea.Batch(p.spinner.Tick, p.loadImagesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), msg.repository.Name))
 	case repositoryImagesLoadedMsg:
 		p.imagesLoading = false
 		p.imagesCancel = nil
@@ -155,7 +157,7 @@ func (p *ECRPage) Update(msg tea.Msg, state State) tea.Cmd {
 			p.focusForStage()
 			if state.ActiveSession != nil && p.selectedRepository.Name != "" {
 				p.imagesLoading = true
-				return tea.Batch(p.spinner.Tick, p.loadImagesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedRepository.Name))
+				return tea.Batch(p.spinner.Tick, p.loadImagesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedRepository.Name))
 			}
 		}
 		return nil
@@ -200,7 +202,7 @@ func (p *ECRPage) updateInputs(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-func (p *ECRPage) updateRepositoryStage(msg tea.KeyMsg, state State) tea.Cmd {
+func (p *ECRPage) updateRepositoryStage(msg tea.KeyMsg, state pageapi.State) tea.Cmd {
 	if p.searchInput.Focused() {
 		if msg.Type == tea.KeyEsc {
 			p.searchInput.Blur()
@@ -215,7 +217,7 @@ func (p *ECRPage) updateRepositoryStage(msg tea.KeyMsg, state State) tea.Cmd {
 	}
 	if key.Matches(msg, ecrRefreshKey) && state.ActiveSession != nil {
 		p.loadingRepositories = true
-		return tea.Batch(p.spinner.Tick, p.loadRepositoriesCmd(state.ActiveSession.Profile, activeRegion(state), p.sessionKey))
+		return tea.Batch(p.spinner.Tick, p.loadRepositoriesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.sessionKey))
 	}
 	if key.Matches(msg, ecrCreateKey) {
 		p.searchInput.Blur()
@@ -253,13 +255,13 @@ func (p *ECRPage) updateRepositoryStage(msg tea.KeyMsg, state State) tea.Cmd {
 		p.focusForStage()
 		if state.ActiveSession != nil {
 			p.imagesLoading = true
-			return tea.Batch(p.spinner.Tick, p.loadImagesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedRepository.Name))
+			return tea.Batch(p.spinner.Tick, p.loadImagesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedRepository.Name))
 		}
 	}
 	return p.updateInputs(msg)
 }
 
-func (p *ECRPage) updateCreateStage(msg tea.Msg, state State) tea.Cmd {
+func (p *ECRPage) updateCreateStage(msg tea.Msg, state pageapi.State) tea.Cmd {
 	if k, ok := msg.(tea.KeyMsg); ok {
 		if ecrTextInputKey(k) {
 			return p.updateInputs(msg)
@@ -271,12 +273,12 @@ func (p *ECRPage) updateCreateStage(msg tea.Msg, state State) tea.Cmd {
 		}
 		if key.Matches(k, ecrEnterKey) && state.ActiveSession != nil {
 			p.loadingRepositories = true
-			return tea.Batch(p.spinner.Tick, p.createRepositoryCmd(state.ActiveSession.Profile, activeRegion(state), p.createInput.Value()))
+			return tea.Batch(p.spinner.Tick, p.createRepositoryCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.createInput.Value()))
 		}
 	}
 	return p.updateInputs(msg)
 }
-func (p *ECRPage) updateImagesStage(msg tea.KeyMsg, state State) tea.Cmd {
+func (p *ECRPage) updateImagesStage(msg tea.KeyMsg, state pageapi.State) tea.Cmd {
 	if key.Matches(msg, ecrBackKey) {
 		p.stage = ecrStageRepository
 		p.focusForStage()
@@ -284,7 +286,7 @@ func (p *ECRPage) updateImagesStage(msg tea.KeyMsg, state State) tea.Cmd {
 	}
 	if key.Matches(msg, ecrRefreshKey) && state.ActiveSession != nil {
 		p.imagesLoading = true
-		return tea.Batch(p.spinner.Tick, p.loadImagesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedRepository.Name))
+		return tea.Batch(p.spinner.Tick, p.loadImagesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedRepository.Name))
 	}
 	if key.Matches(msg, ecrEnterKey) {
 		p.pushMessage = ""
@@ -303,7 +305,7 @@ func (p *ECRPage) updateImagesStage(msg tea.KeyMsg, state State) tea.Cmd {
 	p.imageTable, cmd = p.imageTable.Update(msg)
 	return cmd
 }
-func (p *ECRPage) updateLocalStage(msg tea.Msg, state State) tea.Cmd {
+func (p *ECRPage) updateLocalStage(msg tea.Msg, state pageapi.State) tea.Cmd {
 	if k, ok := msg.(tea.KeyMsg); ok {
 		if p.manualInput.Focused() {
 			if k.Type == tea.KeyEsc {
@@ -373,7 +375,7 @@ func (p *ECRPage) updateLocalStage(msg tea.Msg, state State) tea.Cmd {
 	}
 	return p.updateInputs(msg)
 }
-func (p *ECRPage) updateTagStage(msg tea.Msg, state State) tea.Cmd {
+func (p *ECRPage) updateTagStage(msg tea.Msg, state pageapi.State) tea.Cmd {
 	if k, ok := msg.(tea.KeyMsg); ok {
 		if ecrTextInputKey(k) {
 			return p.updateInputs(msg)

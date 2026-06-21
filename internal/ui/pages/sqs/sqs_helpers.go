@@ -10,12 +10,7 @@ import (
 	domainsqs "aws-terminal/internal/domain/sqs"
 	"aws-terminal/internal/ui/styles"
 	"aws-terminal/internal/ui/tableutil"
-	"aws-terminal/internal/ui/workflow"
 )
-
-func activeRegion(state State) string               { return workflow.ActiveRegion(state) }
-func sqsSessionKey(state State) string              { return workflow.SessionKey(state) }
-func valueOrFallback(value, fallback string) string { return workflow.ValueOrFallback(value, fallback) }
 
 func (p *SQSPage) resetForSession() {
 	p.cancelAll()

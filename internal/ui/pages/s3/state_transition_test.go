@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"context"
 	"testing"
 
@@ -36,7 +37,7 @@ func TestSessionChangeResetsWorkflowAndStartsBucketLoad(t *testing.T) {
 	page.sourceInfo = &domains3.SourceSelection{Path: "/tmp/source", Kind: domains3.SourceKindDirectory}
 	page.prefixInput.SetValue("old-prefix")
 
-	cmd := page.OnStateChanged(State{ActiveSession: &domainsession.Session{Profile: "profile-a", Region: "us-east-1"}})
+	cmd := page.OnStateChanged(pageapi.State{ActiveSession: &domainsession.Session{Profile: "profile-a", Region: "us-east-1"}})
 	if cmd == nil {
 		t.Fatal("expected bucket load command")
 	}
@@ -80,7 +81,7 @@ func TestLargeDeletePlanRequiresTypedConfirmation(t *testing.T) {
 	page.selectedBucket = "bucket-a"
 	page.plan = &domains3.SyncPlan{DeleteEnabled: true, Deletes: make([]domains3.SyncDelete, largeDeleteConfirmationThreshold)}
 
-	cmd := page.updateReviewStage(tea.KeyMsg{Type: tea.KeyEnter}, State{PageFocused: true})
+	cmd := page.updateReviewStage(tea.KeyMsg{Type: tea.KeyEnter}, pageapi.State{PageFocused: true})
 	if cmd == nil {
 		// Focus command may be nil in some Bubble Tea versions, but stage change is the behavior under test.
 	}
@@ -119,7 +120,7 @@ func TestSmallDeletePlanStartsWithoutTypedConfirmation(t *testing.T) {
 	page.stage = s3StageReview
 	page.plan = &domains3.SyncPlan{DeleteEnabled: true, Deletes: make([]domains3.SyncDelete, largeDeleteConfirmationThreshold-1)}
 
-	if cmd := page.updateReviewStage(tea.KeyMsg{Type: tea.KeyEnter}, State{PageFocused: true}); cmd == nil {
+	if cmd := page.updateReviewStage(tea.KeyMsg{Type: tea.KeyEnter}, pageapi.State{PageFocused: true}); cmd == nil {
 		t.Fatal("expected sync command")
 	}
 	if page.stage != s3StageSync {
@@ -133,7 +134,7 @@ func TestReviewToggleDeleteRebuildsPlanForDirectory(t *testing.T) {
 	page.selectedBucket = "bucket-a"
 	page.sourceInfo = &domains3.SourceSelection{Path: "/tmp/source", Kind: domains3.SourceKindDirectory}
 
-	cmd := page.updateReviewStage(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}, State{ActiveSession: &domainsession.Session{Profile: "profile-a", Region: "us-east-1"}, PageFocused: true})
+	cmd := page.updateReviewStage(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}, pageapi.State{ActiveSession: &domainsession.Session{Profile: "profile-a", Region: "us-east-1"}, PageFocused: true})
 	if cmd == nil {
 		t.Fatal("expected plan rebuild command")
 	}

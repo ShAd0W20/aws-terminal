@@ -1,6 +1,8 @@
 package s3
 
 import (
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 	"fmt"
 	"strings"
 	"time"
@@ -12,7 +14,7 @@ import (
 	"aws-terminal/internal/ui/tableutil"
 )
 
-func (p *S3Page) View(state State, width, height int) string {
+func (p *S3Page) View(state pageapi.State, width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
@@ -33,8 +35,8 @@ func (p *S3Page) View(state State, width, height int) string {
 
 	lines = append(lines,
 		fmt.Sprintf("Active profile: %s", state.ActiveSession.Profile),
-		fmt.Sprintf("Account: %s", valueOrFallback(state.ActiveSession.Account, "unknown")),
-		fmt.Sprintf("Region: %s", valueOrFallback(activeRegionFromState(state), "unknown")),
+		fmt.Sprintf("Account: %s", workflow.ValueOrFallback(state.ActiveSession.Account, "unknown")),
+		fmt.Sprintf("Region: %s", workflow.ValueOrFallback(workflow.ActiveRegion(state), "unknown")),
 	)
 
 	if state.PageFocused {
@@ -123,7 +125,7 @@ func (p *S3Page) workflowSummaryLines() []string {
 
 	return []string{
 		styles.MutedStyle.Render("Workflow summary"),
-		fmt.Sprintf("Bucket: %s", valueOrFallback(p.selectedBucket, "not selected")),
+		fmt.Sprintf("Bucket: %s", workflow.ValueOrFallback(p.selectedBucket, "not selected")),
 		fmt.Sprintf("Source: %s", source),
 		fmt.Sprintf("Prefix: %s", prefix),
 	}
@@ -179,7 +181,7 @@ func (p *S3Page) bucketStageLines(width, height int) []string {
 func (p *S3Page) sourceStageLines(width, height int) []string {
 	lines := []string{
 		styles.MutedStyle.Render("Step 2 of 4 · Choose a local file or folder"),
-		fmt.Sprintf("Destination bucket: %s", valueOrFallback(p.selectedBucket, "not selected")),
+		fmt.Sprintf("Destination bucket: %s", workflow.ValueOrFallback(p.selectedBucket, "not selected")),
 		fmt.Sprintf("Current directory: %s", p.picker.CurrentDirectory),
 	}
 	if p.sourceErr != "" {
@@ -205,7 +207,7 @@ func (p *S3Page) sourceStageLines(width, height int) []string {
 func (p *S3Page) prefixStageLines(width int) []string {
 	lines := []string{
 		styles.MutedStyle.Render("Step 3 of 4 · Optional destination prefix"),
-		fmt.Sprintf("Selected bucket: %s", valueOrFallback(p.selectedBucket, "not selected")),
+		fmt.Sprintf("Selected bucket: %s", workflow.ValueOrFallback(p.selectedBucket, "not selected")),
 	}
 	if p.sourceInfo != nil {
 		lines = append(lines, fmt.Sprintf("Selected source: %s (%d files, %s)", p.sourceInfo.Path, p.sourceInfo.FileCount(), formatBytes(p.sourceInfo.TotalSize)))

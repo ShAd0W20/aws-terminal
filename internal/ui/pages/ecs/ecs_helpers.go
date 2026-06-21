@@ -14,11 +14,7 @@ import (
 	domainecs "aws-terminal/internal/domain/ecs"
 	"aws-terminal/internal/ui/styles"
 	"aws-terminal/internal/ui/tableutil"
-	"aws-terminal/internal/ui/workflow"
 )
-
-func sessionKey(state State) string   { return workflow.SessionKey(state) }
-func activeRegion(state State) string { return workflow.ActiveRegion(state) }
 
 func tableStyles() table.Styles {
 	s := table.DefaultStyles()
@@ -27,10 +23,10 @@ func tableStyles() table.Styles {
 	return s
 }
 func clusterColumnsForWidth(width int) []table.Column {
-	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Cluster", Min: 18, Weight: 4, Max: 56}, {Title: "Status", Min: 8, Weight: 1, Max: 12}, {Title: "Services", Min: 8}, {Title: "Running", Min: 8}, {Title: "Pending", Min: 8}, {Title: "Instances", Min: 9}})
+	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Cluster", Min: 18, Weight: 4, Max: 56}, {Title: "pageapi.Status", Min: 8, Weight: 1, Max: 12}, {Title: "Services", Min: 8}, {Title: "Running", Min: 8}, {Title: "Pending", Min: 8}, {Title: "Instances", Min: 9}})
 }
 func serviceColumnsForWidth(width int) []table.Column {
-	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Service", Min: 18, Weight: 4, Max: 48}, {Title: "Status", Min: 8, Weight: 1, Max: 12}, {Title: "Task definition", Min: 18, Weight: 3, Max: 44}, {Title: "Tasks", Min: 10, Weight: 1, Max: 18}, {Title: "Created", Min: 16}})
+	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Service", Min: 18, Weight: 4, Max: 48}, {Title: "pageapi.Status", Min: 8, Weight: 1, Max: 12}, {Title: "Task definition", Min: 18, Weight: 3, Max: 44}, {Title: "Tasks", Min: 10, Weight: 1, Max: 18}, {Title: "Created", Min: 16}})
 }
 func taskColumnsForWidth(width int) []table.Column {
 	if width < 86 {

@@ -1,13 +1,13 @@
 package shell
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"context"
 	"errors"
 	"fmt"
 	"time"
 
 	domainprofile "aws-terminal/internal/domain/profile"
-	"aws-terminal/internal/ui/pages"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -192,9 +192,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMessage = msg.result.Instructions
 		}
 		return m, nil
-	case pages.OpenPageMsg:
+	case pageapi.OpenPageMsg:
 		return m.openPage(msg.PageID, msg.Focus)
-	case pages.OwnedMsg:
+	case pageapi.OwnedMsg:
 		return m.routeOwnedPageMsg(msg)
 	case tea.KeyMsg:
 		if m.paletteOpen {
@@ -271,7 +271,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) currentPageHasFocusedInput() bool {
-	provider, ok := m.currentPage().(pages.FocusedInputProvider)
+	provider, ok := m.currentPage().(pageapi.FocusedInputProvider)
 	return ok && provider.HasFocusedInput()
 }
 
@@ -347,7 +347,7 @@ func (m Model) handlePageSelectionChange(previousPageID string, updateCmd tea.Cm
 	return m, tea.Batch(cmds...)
 }
 
-func (m Model) routeOwnedPageMsg(msg pages.OwnedMsg) (tea.Model, tea.Cmd) {
+func (m Model) routeOwnedPageMsg(msg pageapi.OwnedMsg) (tea.Model, tea.Cmd) {
 	ownerPageID := msg.OwnerPageID()
 	if ownerPageID == "" {
 		return m, m.currentPageUpdateCmd(msg)

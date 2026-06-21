@@ -1,10 +1,10 @@
 package shell
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"testing"
 
 	"aws-terminal/internal/config"
-	"aws-terminal/internal/ui/pages"
 )
 
 type memoryPreferenceStore struct {
@@ -42,8 +42,8 @@ func TestNewModelWithPreferencesSelectsLastPageAndRegion(t *testing.T) {
 	}
 }
 
-func testPageRegistry() []pages.Page {
-	return []pages.Page{
+func testPageRegistry() []pageapi.Page {
+	return []pageapi.Page{
 		&testPage{id: "dashboard"},
 		&testPage{id: "s3-buckets"},
 		&testPage{id: "cloudfront"},

@@ -1,6 +1,7 @@
 package ecs
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"fmt"
 	"regexp"
 	"strings"
@@ -14,7 +15,7 @@ import (
 	"aws-terminal/internal/ui/workflow"
 )
 
-func (p *ECSPage) View(state State, width, height int) string {
+func (p *ECSPage) View(state pageapi.State, width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
@@ -23,7 +24,7 @@ func (p *ECSPage) View(state State, width, height int) string {
 		lines = append(lines, styles.MutedStyle.Render("No active AWS profile. Authenticate a profile from the sidebar first."))
 		return styles.RenderBox(styles.PanelStyle, width, height, strings.Join(lines, "\n"))
 	}
-	lines = append(lines, fmt.Sprintf("Active profile: %s", state.ActiveSession.Profile), fmt.Sprintf("Account: %s", workflow.ValueOrFallback(state.ActiveSession.Account, "unknown")), fmt.Sprintf("Region: %s", workflow.ValueOrFallback(activeRegion(state), "unknown")))
+	lines = append(lines, fmt.Sprintf("Active profile: %s", state.ActiveSession.Profile), fmt.Sprintf("Account: %s", workflow.ValueOrFallback(state.ActiveSession.Account, "unknown")), fmt.Sprintf("Region: %s", workflow.ValueOrFallback(workflow.ActiveRegion(state), "unknown")))
 	if state.PageFocused {
 		lines = append(lines, styles.StatusStyle.Render("Page focus active · tab returns to navigation."))
 	} else {

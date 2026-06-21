@@ -6,25 +6,12 @@ import (
 	"strings"
 
 	domains3 "aws-terminal/internal/domain/s3"
-	"aws-terminal/internal/ui/workflow"
 )
 
 const (
 	largeDeleteConfirmationThreshold = 10
 	deleteConfirmationText           = "DELETE"
 )
-
-func valueOrFallback(value, fallback string) string {
-	return workflow.ValueOrFallback(value, fallback)
-}
-
-func s3SessionKey(state State) string {
-	return workflow.SessionKey(state)
-}
-
-func activeRegionFromState(state State) string {
-	return workflow.ActiveRegion(state)
-}
 
 func syncPercent(progress domains3.SyncProgress) float64 {
 	if progress.Stage == "uploading" && progress.TotalUploadBytes > 0 {

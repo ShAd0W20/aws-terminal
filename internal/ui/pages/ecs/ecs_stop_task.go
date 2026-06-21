@@ -1,6 +1,8 @@
 package ecs
 
 import (
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 	"fmt"
 	"strings"
 
@@ -12,7 +14,7 @@ import (
 
 const defaultStopTaskReason = "Stopped from aws-terminal"
 
-func (p *ECSPage) startStopTask(state State) tea.Cmd {
+func (p *ECSPage) startStopTask(state pageapi.State) tea.Cmd {
 	if state.ActiveSession == nil {
 		return nil
 	}
@@ -29,7 +31,7 @@ func (p *ECSPage) startStopTask(state State) tea.Cmd {
 	return p.stopReasonInput.Focus()
 }
 
-func (p *ECSPage) updateStopTaskReasonStage(msg tea.Msg, state State) tea.Cmd {
+func (p *ECSPage) updateStopTaskReasonStage(msg tea.Msg, state pageapi.State) tea.Cmd {
 	k, isKey := msg.(tea.KeyMsg)
 	if isKey {
 		if key.Matches(k, ecsBackKey) {
@@ -58,7 +60,7 @@ func (p *ECSPage) updateStopTaskReasonStage(msg tea.Msg, state State) tea.Cmd {
 	return nil
 }
 
-func (p *ECSPage) updateStopTaskReviewStage(k tea.KeyMsg, state State) tea.Cmd {
+func (p *ECSPage) updateStopTaskReviewStage(k tea.KeyMsg, state pageapi.State) tea.Cmd {
 	if key.Matches(k, ecsBackKey) {
 		p.stage = ecsStageStopTaskReason
 		return p.stopReasonInput.Focus()
@@ -80,7 +82,7 @@ func (p *ECSPage) updateStopTaskReviewStage(k tea.KeyMsg, state State) tea.Cmd {
 	return nil
 }
 
-func (p *ECSPage) buildStopTaskInput(state State) (domainecs.StopTaskInput, error) {
+func (p *ECSPage) buildStopTaskInput(state pageapi.State) (domainecs.StopTaskInput, error) {
 	if state.ActiveSession == nil {
 		return domainecs.StopTaskInput{}, fmt.Errorf("active AWS profile is required")
 	}
@@ -91,5 +93,5 @@ func (p *ECSPage) buildStopTaskInput(state State) (domainecs.StopTaskInput, erro
 	if reason == "" {
 		return domainecs.StopTaskInput{}, fmt.Errorf("stop reason is required")
 	}
-	return domainecs.StopTaskInput{ProfileName: state.ActiveSession.Profile, Region: activeRegion(state), ClusterARN: p.selectedCluster.ARN, Task: p.selectedTask.ARN, Reason: reason}, nil
+	return domainecs.StopTaskInput{ProfileName: state.ActiveSession.Profile, Region: workflow.ActiveRegion(state), ClusterARN: p.selectedCluster.ARN, Task: p.selectedTask.ARN, Reason: reason}, nil
 }

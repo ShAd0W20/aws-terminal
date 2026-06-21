@@ -1,6 +1,7 @@
 package sqs
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"fmt"
 	"strings"
 
@@ -11,7 +12,7 @@ import (
 	"aws-terminal/internal/ui/workflow"
 )
 
-func (p *SQSPage) View(state State, width, height int) string {
+func (p *SQSPage) View(state pageapi.State, width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
@@ -28,7 +29,7 @@ func (p *SQSPage) View(state State, width, height int) string {
 	lines = append(lines,
 		fmt.Sprintf("Active profile: %s", state.ActiveSession.Profile),
 		fmt.Sprintf("Account: %s", workflow.ValueOrFallback(state.ActiveSession.Account, "unknown")),
-		fmt.Sprintf("Region: %s", valueOrFallback(activeRegion(state), "unknown")),
+		fmt.Sprintf("Region: %s", workflow.ValueOrFallback(workflow.ActiveRegion(state), "unknown")),
 	)
 	if state.PageFocused {
 		lines = append(lines, styles.StatusStyle.Render("Page focus active · tab returns to navigation."))

@@ -1,6 +1,8 @@
 package s3
 
 import (
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 	"context"
 	"strings"
 	"time"
@@ -67,7 +69,7 @@ func (p *S3Page) inspectSourceCmd(sourcePath string) tea.Cmd {
 	}
 }
 
-func (p *S3Page) buildPlanCmd(state State) tea.Cmd {
+func (p *S3Page) buildPlanCmd(state pageapi.State) tea.Cmd {
 	if state.ActiveSession == nil || p.sourceInfo == nil || strings.TrimSpace(p.selectedBucket) == "" {
 		return nil
 	}
@@ -79,7 +81,7 @@ func (p *S3Page) buildPlanCmd(state State) tea.Cmd {
 
 	input := apps3.BuildSyncPlanInput{
 		Profile:             state.ActiveSession.Profile,
-		Region:              activeRegionFromState(state),
+		Region:              workflow.ActiveRegion(state),
 		Bucket:              p.selectedBucket,
 		Prefix:              p.prefixInput.Value(),
 		SourcePath:          p.sourceInfo.Path,

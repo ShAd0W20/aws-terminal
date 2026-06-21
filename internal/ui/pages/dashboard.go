@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"fmt"
 	"strings"
 
@@ -29,7 +30,7 @@ func (*DashboardPage) Description() string {
 	return "Overview, AWS context, and quick actions."
 }
 
-func (*DashboardPage) OnStateChanged(State) tea.Cmd {
+func (*DashboardPage) OnStateChanged(pageapi.State) tea.Cmd {
 	return nil
 }
 
@@ -37,7 +38,7 @@ func (*DashboardPage) SetFocused(bool) tea.Cmd {
 	return nil
 }
 
-func (*DashboardPage) Update(tea.Msg, State) tea.Cmd {
+func (*DashboardPage) Update(tea.Msg, pageapi.State) tea.Cmd {
 	return nil
 }
 
@@ -49,7 +50,7 @@ func (*DashboardPage) FullHelp() [][]key.Binding {
 	return nil
 }
 
-func (*DashboardPage) View(state State, width, height int) string {
+func (*DashboardPage) View(state pageapi.State, width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}

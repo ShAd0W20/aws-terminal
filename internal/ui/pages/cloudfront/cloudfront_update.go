@@ -1,6 +1,8 @@
 package cloudfront
 
 import (
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 	"context"
 	"errors"
 	"fmt"
@@ -14,8 +16,8 @@ import (
 	domaincloudfront "aws-terminal/internal/domain/cloudfront"
 )
 
-func (p *CloudFrontPage) OnStateChanged(state State) tea.Cmd {
-	sessionKey := cloudFrontSessionKey(state)
+func (p *CloudFrontPage) OnStateChanged(state pageapi.State) tea.Cmd {
+	sessionKey := workflow.SessionKey(state)
 	if sessionKey != p.sessionKey {
 		p.sessionKey = sessionKey
 		p.resetForSession()
@@ -26,7 +28,7 @@ func (p *CloudFrontPage) OnStateChanged(state State) tea.Cmd {
 
 	p.loading = true
 	p.loadErr = ""
-	return p.loadDistributionsCmd(state.ActiveSession.Profile, activeRegionFromState(state), sessionKey)
+	return p.loadDistributionsCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), sessionKey)
 }
 
 func (p *CloudFrontPage) SetFocused(focused bool) tea.Cmd {
@@ -40,7 +42,7 @@ func (p *CloudFrontPage) SetFocused(focused bool) tea.Cmd {
 	return nil
 }
 
-func (p *CloudFrontPage) Update(msg tea.Msg, state State) tea.Cmd {
+func (p *CloudFrontPage) Update(msg tea.Msg, state pageapi.State) tea.Cmd {
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
 		if !p.creating {
@@ -178,7 +180,7 @@ func (p *CloudFrontPage) updateDistributionStage(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-func (p *CloudFrontPage) updatePathsStage(msg tea.Msg, state State) tea.Cmd {
+func (p *CloudFrontPage) updatePathsStage(msg tea.Msg, state pageapi.State) tea.Cmd {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch {
 		case key.Matches(keyMsg, cloudFrontBackKey, cloudFrontCancelKey):
@@ -198,7 +200,7 @@ func (p *CloudFrontPage) updatePathsStage(msg tea.Msg, state State) tea.Cmd {
 			p.invalidation = nil
 			return tea.Batch(
 				p.spinner.Tick,
-				p.createInvalidationCmd(state.ActiveSession.Profile, activeRegionFromState(state), p.selectedDistribution.ID, paths),
+				p.createInvalidationCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedDistribution.ID, paths),
 			)
 		case key.Matches(keyMsg, cloudFrontCopyKey):
 			if state.ActiveSession == nil || p.selectedDistribution.ID == "" {
@@ -214,7 +216,7 @@ func (p *CloudFrontPage) updatePathsStage(msg tea.Msg, state State) tea.Cmd {
 	return cmd
 }
 
-func (p *CloudFrontPage) updateResultStage(msg tea.KeyMsg, state State) tea.Cmd {
+func (p *CloudFrontPage) updateResultStage(msg tea.KeyMsg, state pageapi.State) tea.Cmd {
 	if p.creating {
 		if key.Matches(msg, cloudFrontCancelKey) {
 			p.cancelCommands()

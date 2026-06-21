@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"fmt"
 	"strings"
 
@@ -9,7 +10,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"aws-terminal/internal/ui/components"
-	"aws-terminal/internal/ui/pages"
 	"aws-terminal/internal/ui/styles"
 )
 
@@ -338,10 +338,10 @@ func (m Model) footerStatusParts(width int, compact bool) []string {
 	return statusParts
 }
 
-func (m Model) currentPageStatus() pages.Status {
-	provider, ok := m.currentPage().(pages.StatusProvider)
+func (m Model) currentPageStatus() pageapi.Status {
+	provider, ok := m.currentPage().(pageapi.StatusProvider)
 	if !ok {
-		return pages.Status{}
+		return pageapi.Status{}
 	}
 
 	return provider.PageStatus(m.pageState())

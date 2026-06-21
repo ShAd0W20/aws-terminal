@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"context"
 	"testing"
 	"time"
@@ -74,7 +75,7 @@ func TestEscCancelsRunningSync(t *testing.T) {
 
 	page.stage = s3StageSync
 	page.syncing = true
-	page.updateSyncStage(tea.KeyMsg{Type: tea.KeyEsc}, State{})
+	page.updateSyncStage(tea.KeyMsg{Type: tea.KeyEsc}, pageapi.State{})
 
 	select {
 	case <-service.canceled:

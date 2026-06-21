@@ -2,6 +2,7 @@ package app
 
 import (
 	"aws-terminal/internal/config"
+	"aws-terminal/internal/ui/pageapi"
 	"aws-terminal/internal/ui/pages"
 	cloudfrontpage "aws-terminal/internal/ui/pages/cloudfront"
 	ecrpage "aws-terminal/internal/ui/pages/ecr"
@@ -10,8 +11,8 @@ import (
 	sqspage "aws-terminal/internal/ui/pages/sqs"
 )
 
-func DefaultPages(s3Service s3page.S3Service, cloudFrontService cloudfrontpage.CloudFrontService, ecrService ecrpage.ECRService, ecsService ecspage.ECSService, sqsService sqspage.SQSService, preferenceStore config.PreferenceStore) []pages.Page {
-	return []pages.Page{
+func DefaultPages(s3Service s3page.S3Service, cloudFrontService cloudfrontpage.CloudFrontService, ecrService ecrpage.ECRService, ecsService ecspage.ECSService, sqsService sqspage.SQSService, preferenceStore config.PreferenceStore) []pageapi.Page {
+	return []pageapi.Page{
 		pages.NewDashboardPage(),
 		s3page.NewS3PageWithPreferences(s3Service, preferenceStore),
 		cloudfrontpage.NewCloudFrontPage(cloudFrontService),

@@ -1,6 +1,8 @@
 package ecs
 
 import (
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 	"context"
 	"errors"
 	"fmt"
@@ -15,11 +17,11 @@ import (
 	domainecs "aws-terminal/internal/domain/ecs"
 )
 
-func (p *ECSPage) OnStateChanged(state State) tea.Cmd {
+func (p *ECSPage) OnStateChanged(state pageapi.State) tea.Cmd {
 	if !state.PageFocused && p.logStreaming {
 		p.stopLogStreaming()
 	}
-	key := sessionKey(state)
+	key := workflow.SessionKey(state)
 	if key != p.sessionKey {
 		p.sessionKey = key
 		p.resetForSession()
@@ -29,7 +31,7 @@ func (p *ECSPage) OnStateChanged(state State) tea.Cmd {
 	}
 	p.loadingClusters = true
 	p.clustersErr = ""
-	return tea.Batch(p.spinner.Tick, p.loadClustersCmd(state.ActiveSession.Profile, activeRegion(state), key))
+	return tea.Batch(p.spinner.Tick, p.loadClustersCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), key))
 }
 func (p *ECSPage) SetFocused(focused bool) tea.Cmd {
 	if !focused {
@@ -47,7 +49,7 @@ func (p *ECSPage) SetFocused(focused bool) tea.Cmd {
 	}
 	return nil
 }
-func (p *ECSPage) Update(msg tea.Msg, state State) tea.Cmd {
+func (p *ECSPage) Update(msg tea.Msg, state pageapi.State) tea.Cmd {
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
 		if !p.loadingClusters && !p.servicesLoading && !p.tasksLoading && !p.logTargetsLoading && !p.logEventsLoading && !p.taskDefinitionsLoading && !p.updatingService && !p.stoppingTask {
@@ -159,7 +161,7 @@ func (p *ECSPage) Update(msg tea.Msg, state State) tea.Cmd {
 			p.tasksLoading = true
 			p.servicesErr = ""
 			p.tasksErr = ""
-			cmds = append(cmds, p.spinner.Tick, p.loadServicesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN), p.loadTasksCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN))
+			cmds = append(cmds, p.spinner.Tick, p.loadServicesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedCluster.ARN), p.loadTasksCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedCluster.ARN))
 		}
 		return tea.Batch(cmds...)
 	case taskStoppedMsg:
@@ -174,7 +176,7 @@ func (p *ECSPage) Update(msg tea.Msg, state State) tea.Cmd {
 			p.tasksLoading = true
 			p.servicesErr = ""
 			p.tasksErr = ""
-			cmds = append(cmds, p.spinner.Tick, p.loadServicesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN), p.loadTasksCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN))
+			cmds = append(cmds, p.spinner.Tick, p.loadServicesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedCluster.ARN), p.loadTasksCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedCluster.ARN))
 		}
 		if errors.Is(msg.err, context.Canceled) {
 			return tea.Batch(cmds...)
@@ -329,14 +331,14 @@ func (p *ECSPage) resetFilteredCursor() {
 		}
 	}
 }
-func (p *ECSPage) updateClusters(k tea.KeyMsg, state State) tea.Cmd {
+func (p *ECSPage) updateClusters(k tea.KeyMsg, state pageapi.State) tea.Cmd {
 	if key.Matches(k, ecsSearchKey) {
 		return p.searchInput.Focus()
 	}
 	if key.Matches(k, ecsRefreshKey) && state.ActiveSession != nil {
 		p.loadingClusters = true
 		p.clustersErr = ""
-		return tea.Batch(p.spinner.Tick, p.loadClustersCmd(state.ActiveSession.Profile, activeRegion(state), p.sessionKey))
+		return tea.Batch(p.spinner.Tick, p.loadClustersCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.sessionKey))
 	}
 	items := p.filteredClusters()
 	if p.clusterIndex >= len(items) {
@@ -368,12 +370,12 @@ func (p *ECSPage) updateClusters(k tea.KeyMsg, state State) tea.Cmd {
 			p.tasksLoading = true
 			p.servicesErr = ""
 			p.tasksErr = ""
-			return tea.Batch(p.spinner.Tick, p.loadServicesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN), p.loadTasksCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN))
+			return tea.Batch(p.spinner.Tick, p.loadServicesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedCluster.ARN), p.loadTasksCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedCluster.ARN))
 		}
 	}
 	return p.updatePaged(k, true)
 }
-func (p *ECSPage) updateResources(k tea.KeyMsg, state State) tea.Cmd {
+func (p *ECSPage) updateResources(k tea.KeyMsg, state pageapi.State) tea.Cmd {
 	if key.Matches(k, ecsBackKey) {
 		p.stopLogStreaming()
 		p.stage = ecsStageClusters
@@ -401,7 +403,7 @@ func (p *ECSPage) updateResources(k tea.KeyMsg, state State) tea.Cmd {
 		p.tasksLoading = true
 		p.servicesErr = ""
 		p.tasksErr = ""
-		return tea.Batch(p.spinner.Tick, p.loadServicesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN), p.loadTasksCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedCluster.ARN))
+		return tea.Batch(p.spinner.Tick, p.loadServicesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedCluster.ARN), p.loadTasksCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedCluster.ARN))
 	}
 	if p.tab == ecsTabServices {
 		return p.updateServicesTable(k)
@@ -432,7 +434,7 @@ func (p *ECSPage) updateServicesTable(k tea.KeyMsg) tea.Cmd {
 	}
 	return p.updatePaged(k, false)
 }
-func (p *ECSPage) startServiceUpdate(state State) tea.Cmd {
+func (p *ECSPage) startServiceUpdate(state pageapi.State) tea.Cmd {
 	if state.ActiveSession == nil {
 		return nil
 	}
@@ -445,7 +447,7 @@ func (p *ECSPage) startServiceUpdate(state State) tea.Cmd {
 	p.stage = ecsStageUpdateTaskDefinition
 	p.taskDefinitionsLoading = true
 	p.taskDefinitionsErr = ""
-	return tea.Batch(p.spinner.Tick, p.loadTaskDefinitionsCmd(state.ActiveSession.Profile, activeRegion(state), p.updateFamilyPrefix))
+	return tea.Batch(p.spinner.Tick, p.loadTaskDefinitionsCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.updateFamilyPrefix))
 }
 
 func (p *ECSPage) updateTaskDefinitionStage(k tea.KeyMsg) tea.Cmd {
@@ -485,7 +487,7 @@ func (p *ECSPage) updateTaskDefinitionStage(k tea.KeyMsg) tea.Cmd {
 	return cmd
 }
 
-func (p *ECSPage) updateDesiredCountStage(msg tea.Msg, state State) tea.Cmd {
+func (p *ECSPage) updateDesiredCountStage(msg tea.Msg, state pageapi.State) tea.Cmd {
 	k, isKey := msg.(tea.KeyMsg)
 	if isKey {
 		if key.Matches(k, ecsBackKey) {
@@ -516,7 +518,7 @@ func (p *ECSPage) updateDesiredInput(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-func (p *ECSPage) updateServiceReviewStage(k tea.KeyMsg, state State) tea.Cmd {
+func (p *ECSPage) updateServiceReviewStage(k tea.KeyMsg, state pageapi.State) tea.Cmd {
 	if key.Matches(k, ecsBackKey) {
 		p.stage = ecsStageUpdateDesiredCount
 		return p.desiredCountInput.Focus()
@@ -542,7 +544,7 @@ func (p *ECSPage) updateServiceReviewStage(k tea.KeyMsg, state State) tea.Cmd {
 	return nil
 }
 
-func (p *ECSPage) buildUpdateServiceInput(state State) (domainecs.UpdateServiceInput, error) {
+func (p *ECSPage) buildUpdateServiceInput(state pageapi.State) (domainecs.UpdateServiceInput, error) {
 	desired, err := p.parsedDesiredCount()
 	if err != nil {
 		return domainecs.UpdateServiceInput{}, err
@@ -551,7 +553,7 @@ func (p *ECSPage) buildUpdateServiceInput(state State) (domainecs.UpdateServiceI
 	if strings.TrimSpace(selected.ARN) == "" {
 		return domainecs.UpdateServiceInput{}, fmt.Errorf("task definition is required")
 	}
-	input := domainecs.UpdateServiceInput{ProfileName: state.ActiveSession.Profile, Region: activeRegion(state), ClusterARN: p.selectedCluster.ARN, Service: p.selectedService.ARN, ForceNewDeployment: p.updateForceNewDeployment}
+	input := domainecs.UpdateServiceInput{ProfileName: state.ActiveSession.Profile, Region: workflow.ActiveRegion(state), ClusterARN: p.selectedCluster.ARN, Service: p.selectedService.ARN, ForceNewDeployment: p.updateForceNewDeployment}
 	if input.Service == "" {
 		input.Service = p.selectedService.Name
 	}
@@ -630,7 +632,7 @@ func (p *ECSPage) updateTasksTable(k tea.KeyMsg) tea.Cmd {
 	}
 	return p.updatePaged(k, false)
 }
-func (p *ECSPage) updateTaskDetail(k tea.KeyMsg, state State) tea.Cmd {
+func (p *ECSPage) updateTaskDetail(k tea.KeyMsg, state pageapi.State) tea.Cmd {
 	if key.Matches(k, ecsBackKey) {
 		p.stopLogStreaming()
 		p.stage = ecsStageResources
@@ -663,7 +665,7 @@ func (p *ECSPage) updateTaskDetail(k tea.KeyMsg, state State) tea.Cmd {
 	return nil
 }
 
-func (p *ECSPage) ensureLogTargetsLoaded(state State) tea.Cmd {
+func (p *ECSPage) ensureLogTargetsLoaded(state pageapi.State) tea.Cmd {
 	if !p.isActivelyViewingLogs(state) || state.ActiveSession == nil {
 		return nil
 	}
@@ -675,10 +677,10 @@ func (p *ECSPage) ensureLogTargetsLoaded(state State) tea.Cmd {
 	p.resetLogState()
 	p.logTargetsLoading = true
 	p.logStreaming = true
-	return tea.Batch(p.spinner.Tick, p.loadLogTargetsCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedTask.TaskDefinitionARN, p.selectedTask.ID))
+	return tea.Batch(p.spinner.Tick, p.loadLogTargetsCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedTask.TaskDefinitionARN, p.selectedTask.ID))
 }
 
-func (p *ECSPage) switchLogContainer(state State, delta int) tea.Cmd {
+func (p *ECSPage) switchLogContainer(state pageapi.State, delta int) tea.Cmd {
 	if len(p.logTargets) == 0 {
 		return nil
 	}
@@ -692,7 +694,7 @@ func (p *ECSPage) switchLogContainer(state State, delta int) tea.Cmd {
 	return p.startSelectedLogStream(state)
 }
 
-func (p *ECSPage) startSelectedLogStream(state State) tea.Cmd {
+func (p *ECSPage) startSelectedLogStream(state pageapi.State) tea.Cmd {
 	if !p.isActivelyViewingLogs(state) || state.ActiveSession == nil {
 		p.stopLogStreaming()
 		return nil
@@ -715,7 +717,7 @@ func (p *ECSPage) startSelectedLogStream(state State) tea.Cmd {
 	return tea.Batch(p.spinner.Tick, p.fetchSelectedLogEvents(state, "", 15*time.Minute))
 }
 
-func (p *ECSPage) fetchSelectedLogEvents(state State, nextToken string, lookback time.Duration) tea.Cmd {
+func (p *ECSPage) fetchSelectedLogEvents(state pageapi.State, nextToken string, lookback time.Duration) tea.Cmd {
 	if state.ActiveSession == nil {
 		return nil
 	}
@@ -724,10 +726,10 @@ func (p *ECSPage) fetchSelectedLogEvents(state State, nextToken string, lookback
 		return nil
 	}
 	p.logEventsLoading = true
-	return p.loadLogEventsCmd(state.ActiveSession.Profile, activeRegion(state), target, nextToken, lookback, 500)
+	return p.loadLogEventsCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), target, nextToken, lookback, 500)
 }
 
-func (p *ECSPage) isActivelyViewingLogs(state State) bool {
+func (p *ECSPage) isActivelyViewingLogs(state pageapi.State) bool {
 	return state.PageFocused && p.stage == ecsStageTaskDetail && p.taskDetailTab == taskDetailTabLogs
 }
 

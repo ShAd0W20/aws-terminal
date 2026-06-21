@@ -1,6 +1,7 @@
 package sqs
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"context"
 	"strings"
 	"testing"
@@ -33,8 +34,8 @@ func (f *fakeSQSService) PurgeQueue(ctx context.Context, input appsqs.QueueActio
 	return nil
 }
 
-func sqsTestState() State {
-	return State{ActiveSession: &domainsession.Session{Profile: "dev", Region: "eu-west-1", Account: "123"}, SelectedRegion: "eu-west-1", PageFocused: true}
+func sqsTestState() pageapi.State {
+	return pageapi.State{ActiveSession: &domainsession.Session{Profile: "dev", Region: "eu-west-1", Account: "123"}, SelectedRegion: "eu-west-1", PageFocused: true}
 }
 
 func TestPageLoadsOnStateChangeAndRendersCounts(t *testing.T) {
@@ -94,6 +95,23 @@ func TestPullMessagesIsViewOnly(t *testing.T) {
 	}
 	if strings.Contains(view, "receipt") {
 		t.Fatalf("receipt handle should not be rendered:\n%s", view)
+	}
+}
+
+func TestMessageRefreshKeepsCurrentMessagesWhileLoading(t *testing.T) {
+	service := &fakeSQSService{messages: []domainsqs.Message{{ID: "m2", Body: "new"}}}
+	page := NewSQSPage(service)
+	state := sqsTestState()
+	page.selectedQueue = domainsqs.Queue{Name: "orders", URL: "url"}
+	page.messages = []domainsqs.Message{{ID: "m1", Body: "old"}}
+	page.stage = sqsStageMessages
+
+	cmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}}, state)
+	if cmd == nil || !page.messagesLoading {
+		t.Fatal("expected message refresh command")
+	}
+	if len(page.messages) != 1 || page.messages[0].ID != "m1" {
+		t.Fatalf("messages were cleared during refresh: %#v", page.messages)
 	}
 }
 

@@ -1,6 +1,8 @@
 package cloudfront
 
 import (
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 	"context"
 	"time"
 
@@ -54,12 +56,12 @@ func (p *CloudFrontPage) createInvalidationCmd(profileName, region, distribution
 	}
 }
 
-func (p *CloudFrontPage) pollInvalidationCmd(state State, distributionID, invalidationID string, delay time.Duration) tea.Cmd {
+func (p *CloudFrontPage) pollInvalidationCmd(state pageapi.State, distributionID, invalidationID string, delay time.Duration) tea.Cmd {
 	if state.ActiveSession == nil {
 		return nil
 	}
 	profileName := state.ActiveSession.Profile
-	region := activeRegionFromState(state)
+	region := workflow.ActiveRegion(state)
 	if p.pollCancel != nil {
 		p.pollCancel()
 	}

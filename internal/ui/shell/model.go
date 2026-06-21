@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"context"
 	"os"
 	"strings"
@@ -55,7 +56,7 @@ type Model struct {
 	help                  help.Model
 	spinner               spinner.Model
 	keys                  KeyMap
-	pageRegistry          []pages.Page
+	pageRegistry          []pageapi.Page
 	profiles              []domainprofile.Profile
 	profileList           list.Model
 	regions               []domainregion.Region
@@ -83,15 +84,15 @@ type Model struct {
 	paletteIndex          int
 }
 
-func NewModel(sessionService SessionService, authService AuthenticationService, pageRegistry []pages.Page) Model {
+func NewModel(sessionService SessionService, authService AuthenticationService, pageRegistry []pageapi.Page) Model {
 	return NewModelWithPreferences(sessionService, authService, pageRegistry, nil)
 }
 
-func NewModelWithPreferences(sessionService SessionService, authService AuthenticationService, pageRegistry []pages.Page, preferenceStore config.PreferenceStore) Model {
+func NewModelWithPreferences(sessionService SessionService, authService AuthenticationService, pageRegistry []pageapi.Page, preferenceStore config.PreferenceStore) Model {
 	return NewModelWithPreferencesAndUpdates(sessionService, authService, pageRegistry, preferenceStore, nil)
 }
 
-func NewModelWithPreferencesAndUpdates(sessionService SessionService, authService AuthenticationService, pageRegistry []pages.Page, preferenceStore config.PreferenceStore, updateService UpdateService) Model {
+func NewModelWithPreferencesAndUpdates(sessionService SessionService, authService AuthenticationService, pageRegistry []pageapi.Page, preferenceStore config.PreferenceStore, updateService UpdateService) Model {
 	helpModel := help.New()
 	helpModel.ShowAll = false
 
@@ -148,7 +149,7 @@ func (m Model) innerHeight() int {
 	return m.height - styles.DocStyle.GetVerticalFrameSize()
 }
 
-func (m Model) currentPage() pages.Page {
+func (m Model) currentPage() pageapi.Page {
 	if item, ok := m.pageList.SelectedItem().(pageListItem); ok {
 		return item.Page
 	}
@@ -159,7 +160,7 @@ func (m Model) currentPage() pages.Page {
 	return m.pageRegistry[0]
 }
 
-func (m Model) pageByID(pageID string) pages.Page {
+func (m Model) pageByID(pageID string) pageapi.Page {
 	pageID = strings.TrimSpace(pageID)
 	for _, page := range m.pageRegistry {
 		if page.ID() == pageID {
@@ -201,8 +202,8 @@ func (m Model) selectedRegionEntry() (domainregion.Region, bool) {
 	return item.Region, true
 }
 
-func (m Model) pageState() pages.State {
-	return pages.State{
+func (m Model) pageState() pageapi.State {
+	return pageapi.State{
 		HighlightedProfile: m.selectedProfilePointer(),
 		ActiveSession:      m.activeSession,
 		SelectedRegion:     m.selectedRegion,

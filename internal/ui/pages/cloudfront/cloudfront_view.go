@@ -1,6 +1,8 @@
 package cloudfront
 
 import (
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 	"fmt"
 	"strings"
 
@@ -10,7 +12,7 @@ import (
 	"aws-terminal/internal/ui/tableutil"
 )
 
-func (p *CloudFrontPage) View(state State, width, height int) string {
+func (p *CloudFrontPage) View(state pageapi.State, width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
@@ -28,7 +30,7 @@ func (p *CloudFrontPage) View(state State, width, height int) string {
 
 	lines = append(lines,
 		fmt.Sprintf("Active profile: %s", state.ActiveSession.Profile),
-		fmt.Sprintf("Region: %s", valueOrFallback(activeRegionFromState(state), "us-east-1")),
+		fmt.Sprintf("Region: %s", workflow.ValueOrFallback(workflow.ActiveRegion(state), "us-east-1")),
 	)
 	if state.PageFocused {
 		lines = append(lines, styles.StatusStyle.Render("Page focus active · tab returns to navigation."))
@@ -156,7 +158,7 @@ func (p *CloudFrontPage) resultStageLines() []string {
 		return lines
 	}
 
-	statusLine := fmt.Sprintf("Status: %s", valueOrFallback(p.invalidation.Status, "unknown"))
+	statusLine := fmt.Sprintf("Status: %s", workflow.ValueOrFallback(p.invalidation.Status, "unknown"))
 	if p.creating {
 		statusLine = p.spinner.View() + " " + statusLine
 	}

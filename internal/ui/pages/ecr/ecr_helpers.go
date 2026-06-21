@@ -12,11 +12,7 @@ import (
 	domainecr "aws-terminal/internal/domain/ecr"
 	"aws-terminal/internal/ui/styles"
 	"aws-terminal/internal/ui/tableutil"
-	"aws-terminal/internal/ui/workflow"
 )
-
-func ecrSessionKey(state State) string { return workflow.SessionKey(state) }
-func activeRegion(state State) string  { return workflow.ActiveRegion(state) }
 
 func ecrImageTableColumnsForWidth(width int) []table.Column {
 	return tableutil.FitColumns(width, []tableutil.ColumnSpec{{Title: "Tags", Min: 18, Weight: 4, Max: 56}, {Title: "Size", Min: 10}, {Title: "Created", Min: 16}, {Title: "Last pulled", Min: 16}, {Title: "Digest", Min: 20, Weight: 2, Max: 40}})

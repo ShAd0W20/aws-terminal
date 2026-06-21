@@ -1,15 +1,14 @@
 package shell
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
-
-	"aws-terminal/internal/ui/pages"
 )
 
 type pageListItem struct {
-	Page pages.Page
+	Page pageapi.Page
 }
 
 func (i pageListItem) FilterValue() string {

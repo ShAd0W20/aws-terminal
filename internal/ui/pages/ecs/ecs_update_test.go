@@ -1,6 +1,7 @@
 package ecs
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"context"
 	"testing"
 	"time"
@@ -38,8 +39,8 @@ func (fakeECSService) FetchTaskLogEvents(context.Context, string, string, domain
 	return domainecs.LogEventsPage{Events: []domainecs.LogEvent{{ID: "1", Timestamp: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC), Message: "INFO hello"}}, NextForwardToken: "next"}, nil
 }
 
-func testState() State {
-	return State{ActiveSession: &domainsession.Session{Profile: "dev", Region: "eu-west-1"}, SelectedRegion: "eu-west-1", PageFocused: true}
+func testState() pageapi.State {
+	return pageapi.State{ActiveSession: &domainsession.Session{Profile: "dev", Region: "eu-west-1"}, SelectedRegion: "eu-west-1", PageFocused: true}
 }
 
 func TestSearchInputAcceptsKeybindLetters(t *testing.T) {

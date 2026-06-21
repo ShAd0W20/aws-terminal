@@ -1,6 +1,7 @@
 package ecr
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"context"
 	"fmt"
 	"strings"
@@ -42,8 +43,8 @@ func (f *fakeECRService) ExecutePush(ctx context.Context, plan domainecr.PushPla
 	return domainecr.PushResult{DestinationImage: plan.DestinationImage}, nil
 }
 
-func testState() State {
-	return State{ActiveSession: &domainsession.Session{Profile: "pre", Region: "eu-west-1", Account: "123"}, SelectedRegion: "eu-west-1", PageFocused: true}
+func testState() pageapi.State {
+	return pageapi.State{ActiveSession: &domainsession.Session{Profile: "pre", Region: "eu-west-1", Account: "123"}, SelectedRegion: "eu-west-1", PageFocused: true}
 }
 
 func TestRepositorySearchAcceptsKeybindLetters(t *testing.T) {

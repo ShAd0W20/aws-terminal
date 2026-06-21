@@ -1,6 +1,8 @@
 package sqs
 
 import (
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 	"context"
 	"errors"
 	"fmt"
@@ -10,8 +12,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func (p *SQSPage) OnStateChanged(state State) tea.Cmd {
-	sessionKey := sqsSessionKey(state)
+func (p *SQSPage) OnStateChanged(state pageapi.State) tea.Cmd {
+	sessionKey := workflow.SessionKey(state)
 	if sessionKey != p.sessionKey {
 		p.sessionKey = sessionKey
 		p.resetForSession()
@@ -21,7 +23,7 @@ func (p *SQSPage) OnStateChanged(state State) tea.Cmd {
 	}
 	p.loading = true
 	p.loadErr = ""
-	return tea.Batch(p.spinner.Tick, p.loadQueuesCmd(state.ActiveSession.Profile, activeRegion(state), sessionKey))
+	return tea.Batch(p.spinner.Tick, p.loadQueuesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), sessionKey))
 }
 
 func (p *SQSPage) SetFocused(focused bool) tea.Cmd {
@@ -34,7 +36,7 @@ func (p *SQSPage) SetFocused(focused bool) tea.Cmd {
 
 func (p *SQSPage) HasFocusedInput() bool { return p.search.Focused() || p.purgeInput.Focused() }
 
-func (p *SQSPage) Update(msg tea.Msg, state State) tea.Cmd {
+func (p *SQSPage) Update(msg tea.Msg, state pageapi.State) tea.Cmd {
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
 		if !p.loading && !p.messagesLoading && !p.purging {
@@ -127,7 +129,7 @@ func (p *SQSPage) handleMessagesLoaded(msg messagesLoadedMsg) tea.Cmd {
 	return nil
 }
 
-func (p *SQSPage) handleQueuePurged(msg queuePurgedMsg, state State) tea.Cmd {
+func (p *SQSPage) handleQueuePurged(msg queuePurgedMsg, state pageapi.State) tea.Cmd {
 	p.purging = false
 	p.purgeCancel = nil
 	if errors.Is(msg.err, context.Canceled) {
@@ -142,14 +144,10 @@ func (p *SQSPage) handleQueuePurged(msg queuePurgedMsg, state State) tea.Cmd {
 	p.purgeInput.SetValue("")
 	p.purgeInput.Blur()
 	p.stage = sqsStageQueueActions
-	if state.ActiveSession != nil {
-		p.loading = true
-		return tea.Batch(p.spinner.Tick, p.loadQueuesCmd(state.ActiveSession.Profile, activeRegion(state), p.sessionKey))
-	}
-	return nil
+	return p.startQueueRefresh(state)
 }
 
-func (p *SQSPage) updateQueuesStage(msg tea.KeyMsg, state State) tea.Cmd {
+func (p *SQSPage) updateQueuesStage(msg tea.KeyMsg, state pageapi.State) tea.Cmd {
 	switch {
 	case key.Matches(msg, sqsSearchKey):
 		return p.search.Focus()
@@ -185,7 +183,7 @@ func (p *SQSPage) updateQueuesStage(msg tea.KeyMsg, state State) tea.Cmd {
 	return nil
 }
 
-func (p *SQSPage) updateQueueActionsStage(msg tea.KeyMsg, state State) tea.Cmd {
+func (p *SQSPage) updateQueueActionsStage(msg tea.KeyMsg, state pageapi.State) tea.Cmd {
 	switch {
 	case key.Matches(msg, sqsBackKey, sqsCancelKey):
 		p.stage = sqsStageQueues
@@ -194,13 +192,7 @@ func (p *SQSPage) updateQueueActionsStage(msg tea.KeyMsg, state State) tea.Cmd {
 	case key.Matches(msg, sqsRefreshKey):
 		return p.startQueueRefresh(state)
 	case key.Matches(msg, sqsPullKey):
-		if state.ActiveSession == nil || p.messagesLoading || p.selectedQueue.URL == "" {
-			return nil
-		}
-		p.messagesLoading = true
-		p.messagesErr = ""
-		p.messages = nil
-		return tea.Batch(p.spinner.Tick, p.receiveMessagesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedQueue))
+		return p.startMessagePull(state, true)
 	case key.Matches(msg, sqsPurgeKey):
 		if p.selectedQueue.Name == "" || p.purging {
 			return nil
@@ -212,17 +204,12 @@ func (p *SQSPage) updateQueueActionsStage(msg tea.KeyMsg, state State) tea.Cmd {
 	return nil
 }
 
-func (p *SQSPage) updateMessagesStage(msg tea.KeyMsg, state State) tea.Cmd {
+func (p *SQSPage) updateMessagesStage(msg tea.KeyMsg, state pageapi.State) tea.Cmd {
 	switch {
 	case key.Matches(msg, sqsBackKey, sqsCancelKey):
 		p.stage = sqsStageQueueActions
 	case key.Matches(msg, sqsPullKey, sqsRefreshKey):
-		if state.ActiveSession == nil || p.messagesLoading || p.selectedQueue.URL == "" {
-			return nil
-		}
-		p.messagesLoading = true
-		p.messagesErr = ""
-		return tea.Batch(p.spinner.Tick, p.receiveMessagesCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedQueue))
+		return p.startMessagePull(state, false)
 	case key.Matches(msg, sqsUpKey):
 		if p.messageIndex > 0 {
 			p.messageIndex--
@@ -235,7 +222,7 @@ func (p *SQSPage) updateMessagesStage(msg tea.KeyMsg, state State) tea.Cmd {
 	return nil
 }
 
-func (p *SQSPage) updatePurgeConfirmStage(msg tea.Msg, state State) tea.Cmd {
+func (p *SQSPage) updatePurgeConfirmStage(msg tea.Msg, state pageapi.State) tea.Cmd {
 	keyMsg, ok := msg.(tea.KeyMsg)
 	if ok {
 		switch {
@@ -246,16 +233,7 @@ func (p *SQSPage) updatePurgeConfirmStage(msg tea.Msg, state State) tea.Cmd {
 			p.purgeErr = ""
 			return nil
 		case key.Matches(keyMsg, sqsEnterKey):
-			if state.ActiveSession == nil || p.purging {
-				return nil
-			}
-			if p.purgeInput.Value() != p.selectedQueue.Name {
-				p.purgeErr = "Queue name confirmation does not match."
-				return nil
-			}
-			p.purging = true
-			p.purgeErr = ""
-			return tea.Batch(p.spinner.Tick, p.purgeQueueCmd(state.ActiveSession.Profile, activeRegion(state), p.selectedQueue))
+			return p.startPurge(state)
 		}
 	}
 	var cmd tea.Cmd
@@ -263,13 +241,38 @@ func (p *SQSPage) updatePurgeConfirmStage(msg tea.Msg, state State) tea.Cmd {
 	return cmd
 }
 
-func (p *SQSPage) startQueueRefresh(state State) tea.Cmd {
+func (p *SQSPage) startMessagePull(state pageapi.State, clearMessages bool) tea.Cmd {
+	if state.ActiveSession == nil || p.messagesLoading || p.selectedQueue.URL == "" {
+		return nil
+	}
+	p.messagesLoading = true
+	p.messagesErr = ""
+	if clearMessages {
+		p.messages = nil
+	}
+	return tea.Batch(p.spinner.Tick, p.receiveMessagesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedQueue))
+}
+
+func (p *SQSPage) startPurge(state pageapi.State) tea.Cmd {
+	if state.ActiveSession == nil || p.purging {
+		return nil
+	}
+	if p.purgeInput.Value() != p.selectedQueue.Name {
+		p.purgeErr = "Queue name confirmation does not match."
+		return nil
+	}
+	p.purging = true
+	p.purgeErr = ""
+	return tea.Batch(p.spinner.Tick, p.purgeQueueCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedQueue))
+}
+
+func (p *SQSPage) startQueueRefresh(state pageapi.State) tea.Cmd {
 	if state.ActiveSession == nil || p.loading {
 		return nil
 	}
 	p.loading = true
 	p.loadErr = ""
-	return tea.Batch(p.spinner.Tick, p.loadQueuesCmd(state.ActiveSession.Profile, activeRegion(state), p.sessionKey))
+	return tea.Batch(p.spinner.Tick, p.loadQueuesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.sessionKey))
 }
 
 func (p *SQSPage) updateFocusedInput(msg tea.Msg) tea.Cmd {

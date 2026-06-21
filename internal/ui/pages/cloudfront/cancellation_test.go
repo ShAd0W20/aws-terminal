@@ -1,6 +1,7 @@
 package cloudfront
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"context"
 	"testing"
 	"time"
@@ -28,7 +29,7 @@ func (cloudFrontNoopService) GetInvalidation(context.Context, string, string, st
 
 func TestResetCancelsPendingPollDelay(t *testing.T) {
 	page := NewCloudFrontPage(cloudFrontNoopService{})
-	state := State{ActiveSession: &domainsession.Session{Profile: "test", Region: "us-east-1"}}
+	state := pageapi.State{ActiveSession: &domainsession.Session{Profile: "test", Region: "us-east-1"}}
 
 	cmd := page.pollInvalidationCmd(state, "DIST", "INV", time.Hour)
 	if cmd == nil {
@@ -56,7 +57,7 @@ func TestResetCancelsPendingPollDelay(t *testing.T) {
 
 func TestEscCancelsPendingPollDelay(t *testing.T) {
 	page := NewCloudFrontPage(cloudFrontNoopService{})
-	state := State{ActiveSession: &domainsession.Session{Profile: "test", Region: "us-east-1"}}
+	state := pageapi.State{ActiveSession: &domainsession.Session{Profile: "test", Region: "us-east-1"}}
 	cmd := page.pollInvalidationCmd(state, "DIST", "INV", time.Hour)
 
 	msgCh := make(chan interface{}, 1)

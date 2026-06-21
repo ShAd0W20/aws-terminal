@@ -1,24 +1,23 @@
 package shell
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"strings"
 	"testing"
-
-	"aws-terminal/internal/ui/pages"
 )
 
 type statusTestPage struct {
 	testPage
-	status pages.Status
+	status pageapi.Status
 }
 
-func (p *statusTestPage) PageStatus(pages.State) pages.Status {
+func (p *statusTestPage) PageStatus(pageapi.State) pageapi.Status {
 	return p.status
 }
 
 func TestCurrentPageStatusUsesOptionalProvider(t *testing.T) {
-	page := &statusTestPage{testPage: testPage{id: "status"}, status: pages.Status{Message: "workflow running"}}
-	model := Model{pageRegistry: []pages.Page{page}, pageList: newSidebarListModel()}
+	page := &statusTestPage{testPage: testPage{id: "status"}, status: pageapi.Status{Message: "workflow running"}}
+	model := Model{pageRegistry: []pageapi.Page{page}, pageList: newSidebarListModel()}
 	model.refreshPageList("status")
 
 	status := model.currentPageStatus()
@@ -28,11 +27,11 @@ func TestCurrentPageStatusUsesOptionalProvider(t *testing.T) {
 }
 
 func TestFooterIncludesPageStatusSeparatelyFromGlobalStatus(t *testing.T) {
-	page := &statusTestPage{testPage: testPage{id: "status"}, status: pages.Status{Message: "workflow running"}}
+	page := &statusTestPage{testPage: testPage{id: "status"}, status: pageapi.Status{Message: "workflow running"}}
 	model := Model{
 		width:         120,
 		height:        40,
-		pageRegistry:  []pages.Page{page},
+		pageRegistry:  []pageapi.Page{page},
 		pageList:      newSidebarListModel(),
 		profileList:   newSidebarListModel(),
 		regionList:    newSidebarListModel(),

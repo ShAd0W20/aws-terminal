@@ -1,6 +1,8 @@
 package s3
 
 import (
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 	"context"
 	"errors"
 	"fmt"
@@ -13,8 +15,8 @@ import (
 	domains3 "aws-terminal/internal/domain/s3"
 )
 
-func (p *S3Page) OnStateChanged(state State) tea.Cmd {
-	sessionKey := s3SessionKey(state)
+func (p *S3Page) OnStateChanged(state pageapi.State) tea.Cmd {
+	sessionKey := workflow.SessionKey(state)
 	if sessionKey != p.sessionKey {
 		p.sessionKey = sessionKey
 		p.resetWorkflowForSession()
@@ -29,7 +31,7 @@ func (p *S3Page) OnStateChanged(state State) tea.Cmd {
 
 	p.loadingBuckets = true
 	p.bucketErr = ""
-	return p.loadBucketsCmd(state.ActiveSession.Profile, activeRegionFromState(state), sessionKey)
+	return p.loadBucketsCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), sessionKey)
 }
 
 func (p *S3Page) SetFocused(focused bool) tea.Cmd {
@@ -50,7 +52,7 @@ func (p *S3Page) SetFocused(focused bool) tea.Cmd {
 	return nil
 }
 
-func (p *S3Page) Update(msg tea.Msg, state State) tea.Cmd {
+func (p *S3Page) Update(msg tea.Msg, state pageapi.State) tea.Cmd {
 	switch msg := msg.(type) {
 	case s3BucketsLoadedMsg:
 		if msg.sessionKey != p.sessionKey {
@@ -238,7 +240,7 @@ func (p *S3Page) updateBucketStage(msg tea.KeyMsg) tea.Cmd {
 		p.syncMessage = ""
 		p.offerInvalidation = false
 		return func() tea.Msg {
-			return OpenPageMsg{PageID: "cloudfront", Focus: true}
+			return pageapi.OpenPageMsg{PageID: "cloudfront", Focus: true}
 		}
 	}
 
@@ -312,7 +314,7 @@ func (p *S3Page) updateSourceStage(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-func (p *S3Page) updatePrefixStage(msg tea.Msg, state State) tea.Cmd {
+func (p *S3Page) updatePrefixStage(msg tea.Msg, state pageapi.State) tea.Cmd {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch {
 		case key.Matches(keyMsg, s3EnterKey):
@@ -337,7 +339,7 @@ func (p *S3Page) updatePrefixStage(msg tea.Msg, state State) tea.Cmd {
 	return cmd
 }
 
-func (p *S3Page) updateReviewStage(msg tea.KeyMsg, state State) tea.Cmd {
+func (p *S3Page) updateReviewStage(msg tea.KeyMsg, state pageapi.State) tea.Cmd {
 	switch {
 	case key.Matches(msg, s3BackKey, s3CancelKey):
 		if p.planning {
@@ -414,7 +416,7 @@ func (p *S3Page) updateConfirmDeleteStage(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-func (p *S3Page) updateSyncStage(msg tea.KeyMsg, state State) tea.Cmd {
+func (p *S3Page) updateSyncStage(msg tea.KeyMsg, state pageapi.State) tea.Cmd {
 	if p.syncing {
 		if key.Matches(msg, s3CancelKey) {
 			if p.syncCancel != nil {

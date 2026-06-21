@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"aws-terminal/internal/ui/pageapi"
 	"context"
 	"testing"
 
@@ -11,7 +12,6 @@ import (
 	domainauth "aws-terminal/internal/domain/auth"
 	domainprofile "aws-terminal/internal/domain/profile"
 	domainsession "aws-terminal/internal/domain/session"
-	"aws-terminal/internal/ui/pages"
 )
 
 type testOwnedMsg struct{ pageID string }
@@ -24,25 +24,25 @@ type testPage struct {
 	lastMsg tea.Msg
 }
 
-func (p *testPage) ID() string                         { return p.id }
-func (p *testPage) Title() string                      { return p.id }
-func (p *testPage) Description() string                { return p.id }
-func (p *testPage) OnStateChanged(pages.State) tea.Cmd { return nil }
-func (p *testPage) SetFocused(bool) tea.Cmd            { return nil }
-func (p *testPage) Update(msg tea.Msg, _ pages.State) tea.Cmd {
+func (p *testPage) ID() string                           { return p.id }
+func (p *testPage) Title() string                        { return p.id }
+func (p *testPage) Description() string                  { return p.id }
+func (p *testPage) OnStateChanged(pageapi.State) tea.Cmd { return nil }
+func (p *testPage) SetFocused(bool) tea.Cmd              { return nil }
+func (p *testPage) Update(msg tea.Msg, _ pageapi.State) tea.Cmd {
 	p.updates++
 	p.lastMsg = msg
 	return nil
 }
-func (p *testPage) View(pages.State, int, int) string { return "" }
-func (p *testPage) ShortHelp() []key.Binding          { return nil }
-func (p *testPage) FullHelp() [][]key.Binding         { return nil }
+func (p *testPage) View(pageapi.State, int, int) string { return "" }
+func (p *testPage) ShortHelp() []key.Binding            { return nil }
+func (p *testPage) FullHelp() [][]key.Binding           { return nil }
 
 func TestOwnedPageMessageRoutesToOwnerWhenNotCurrentPage(t *testing.T) {
 	current := &testPage{id: "current"}
 	owner := &testPage{id: "owner"}
 	model := Model{
-		pageRegistry: []pages.Page{current, owner},
+		pageRegistry: []pageapi.Page{current, owner},
 		pageList:     newSidebarListModel(),
 	}
 	model.refreshPageList("current")
@@ -97,7 +97,7 @@ func TestRefreshKeyRoutesToPageWhenPageFocused(t *testing.T) {
 		sessionService: shellTestSessionService{},
 		authService:    shellTestAuthService{},
 		keys:           DefaultKeyMap,
-		pageRegistry:   []pages.Page{page},
+		pageRegistry:   []pageapi.Page{page},
 		pageList:       newSidebarListModel(),
 		profileList:    newSidebarListModel(),
 		focus:          focusPage,
@@ -189,7 +189,7 @@ func testShellModel(auth AuthenticationService, profile domainprofile.Profile) M
 	model := Model{
 		sessionService: shellTestSessionService{},
 		authService:    auth,
-		pageRegistry:   []pages.Page{page},
+		pageRegistry:   []pageapi.Page{page},
 		pageList:       newSidebarListModel(),
 		profileList:    newSidebarListModel(),
 		profiles:       []domainprofile.Profile{profile},
@@ -237,7 +237,7 @@ func firstNonNilBatchMessage(t *testing.T, cmd tea.Cmd) tea.Msg {
 func TestOwnedPageMessageForUnknownOwnerIsIgnored(t *testing.T) {
 	current := &testPage{id: "current"}
 	model := Model{
-		pageRegistry: []pages.Page{current},
+		pageRegistry: []pageapi.Page{current},
 		pageList:     newSidebarListModel(),
 	}
 	model.refreshPageList("current")
