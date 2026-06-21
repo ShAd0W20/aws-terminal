@@ -85,7 +85,7 @@ func TestPullMessagesIsViewOnly(t *testing.T) {
 	if cmd == nil || !page.messagesLoading {
 		t.Fatal("expected pull command and loading state")
 	}
-	page.Update(messagesLoadedMsg{queueName: "orders", messages: service.messages}, state)
+	page.Update(messagesLoadedMsg{sessionKey: page.sessionKey, queueName: "orders", messages: service.messages}, state)
 	if page.stage != sqsStageMessages {
 		t.Fatalf("stage=%v", page.stage)
 	}
@@ -115,6 +115,44 @@ func TestMessageRefreshKeepsCurrentMessagesWhileLoading(t *testing.T) {
 	}
 }
 
+func TestStaleMessageResultsAreIgnored(t *testing.T) {
+	page := NewSQSPage(&fakeSQSService{})
+	page.sessionKey = "current"
+	page.selectedQueue = domainsqs.Queue{Name: "current", URL: "url"}
+	page.messagesLoading = true
+
+	page.Update(messagesLoadedMsg{sessionKey: "old", queueName: "current", messages: []domainsqs.Message{{ID: "old"}}}, sqsTestState())
+	page.Update(messagesLoadedMsg{sessionKey: "current", queueName: "other", messages: []domainsqs.Message{{ID: "other"}}}, sqsTestState())
+	if len(page.messages) != 0 {
+		t.Fatalf("stale messages applied: %#v", page.messages)
+	}
+}
+
+func TestStalePurgeResultsAreIgnored(t *testing.T) {
+	page := NewSQSPage(&fakeSQSService{})
+	page.sessionKey = "current"
+	page.selectedQueue = domainsqs.Queue{Name: "current", URL: "url"}
+	page.purging = true
+
+	page.Update(queuePurgedMsg{sessionKey: "old", queueName: "current"}, sqsTestState())
+	page.Update(queuePurgedMsg{sessionKey: "current", queueName: "other"}, sqsTestState())
+	if page.purgeMessage != "" || page.stage != sqsStageQueues {
+		t.Fatalf("stale purge applied: stage=%v message=%q", page.stage, page.purgeMessage)
+	}
+}
+
+func TestPageStatusReportsSQSActivity(t *testing.T) {
+	page := NewSQSPage(&fakeSQSService{})
+	page.messagesLoading = true
+	if got := page.PageStatus(pageapi.State{}).Message; got != "Pulling SQS messages..." {
+		t.Fatalf("status message=%q", got)
+	}
+	page.messagesErr = "boom"
+	if got := page.PageStatus(pageapi.State{}).Error; got != "boom" {
+		t.Fatalf("status error=%q", got)
+	}
+}
+
 func TestPurgeRequiresQueueNameConfirmation(t *testing.T) {
 	service := &fakeSQSService{queues: []domainsqs.Queue{{Name: "orders", URL: "url"}}}
 	page := NewSQSPage(service)
@@ -135,7 +173,7 @@ func TestPurgeRequiresQueueNameConfirmation(t *testing.T) {
 	if cmd == nil || !page.purging {
 		t.Fatal("expected purge command")
 	}
-	page.Update(queuePurgedMsg{queueName: "orders"}, state)
+	page.Update(queuePurgedMsg{sessionKey: page.sessionKey, queueName: "orders"}, state)
 	if page.stage != sqsStageQueueActions || page.purgeMessage == "" {
 		t.Fatalf("expected action stage with purge message, stage=%v message=%q", page.stage, page.purgeMessage)
 	}

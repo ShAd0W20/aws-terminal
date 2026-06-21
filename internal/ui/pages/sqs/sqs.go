@@ -34,14 +34,16 @@ type queuesLoadedMsg struct {
 }
 
 type messagesLoadedMsg struct {
-	queueName string
-	messages  []domainsqs.Message
-	err       error
+	sessionKey string
+	queueName  string
+	messages   []domainsqs.Message
+	err        error
 }
 
 type queuePurgedMsg struct {
-	queueName string
-	err       error
+	sessionKey string
+	queueName  string
+	err        error
 }
 
 func (queuesLoadedMsg) OwnerPageID() string   { return "sqs" }

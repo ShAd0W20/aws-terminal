@@ -1,11 +1,12 @@
 package sqs
 
 import (
-	"aws-terminal/internal/ui/pageapi"
-	"aws-terminal/internal/ui/workflow"
 	"context"
 	"errors"
 	"fmt"
+
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -112,6 +113,9 @@ func (p *SQSPage) handleQueuesLoaded(msg queuesLoadedMsg) tea.Cmd {
 }
 
 func (p *SQSPage) handleMessagesLoaded(msg messagesLoadedMsg) tea.Cmd {
+	if msg.sessionKey != p.sessionKey || msg.queueName != p.selectedQueue.Name {
+		return nil
+	}
 	p.messagesLoading = false
 	p.messagesCancel = nil
 	if errors.Is(msg.err, context.Canceled) {
@@ -130,6 +134,9 @@ func (p *SQSPage) handleMessagesLoaded(msg messagesLoadedMsg) tea.Cmd {
 }
 
 func (p *SQSPage) handleQueuePurged(msg queuePurgedMsg, state pageapi.State) tea.Cmd {
+	if msg.sessionKey != p.sessionKey || msg.queueName != p.selectedQueue.Name {
+		return nil
+	}
 	p.purging = false
 	p.purgeCancel = nil
 	if errors.Is(msg.err, context.Canceled) {
@@ -173,6 +180,9 @@ func (p *SQSPage) updateQueuesStage(msg tea.KeyMsg, state pageapi.State) tea.Cmd
 		queue := p.currentQueue()
 		if queue.Name == "" {
 			return nil
+		}
+		if queue.Name != p.selectedQueue.Name {
+			p.cancelQueueActions()
 		}
 		p.selectedQueue = queue
 		p.stage = sqsStageQueueActions
@@ -250,7 +260,7 @@ func (p *SQSPage) startMessagePull(state pageapi.State, clearMessages bool) tea.
 	if clearMessages {
 		p.messages = nil
 	}
-	return tea.Batch(p.spinner.Tick, p.receiveMessagesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedQueue))
+	return tea.Batch(p.spinner.Tick, p.receiveMessagesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.sessionKey, p.selectedQueue))
 }
 
 func (p *SQSPage) startPurge(state pageapi.State) tea.Cmd {
@@ -263,7 +273,7 @@ func (p *SQSPage) startPurge(state pageapi.State) tea.Cmd {
 	}
 	p.purging = true
 	p.purgeErr = ""
-	return tea.Batch(p.spinner.Tick, p.purgeQueueCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selectedQueue))
+	return tea.Batch(p.spinner.Tick, p.purgeQueueCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.sessionKey, p.selectedQueue))
 }
 
 func (p *SQSPage) startQueueRefresh(state pageapi.State) tea.Cmd {

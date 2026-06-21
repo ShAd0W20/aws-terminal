@@ -37,14 +37,20 @@ func (p *SQSPage) resetForSession() {
 
 func (p *SQSPage) cancelAll() {
 	p.cancelLoad()
+	p.cancelQueueActions()
+}
+
+func (p *SQSPage) cancelQueueActions() {
 	if p.messagesCancel != nil {
 		p.messagesCancel()
 		p.messagesCancel = nil
 	}
+	p.messagesLoading = false
 	if p.purgeCancel != nil {
 		p.purgeCancel()
 		p.purgeCancel = nil
 	}
+	p.purging = false
 }
 
 func (p *SQSPage) cancelLoad() {

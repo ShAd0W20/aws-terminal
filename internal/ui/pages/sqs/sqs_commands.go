@@ -19,7 +19,7 @@ func (p *SQSPage) loadQueuesCmd(profile, region, sessionKey string) tea.Cmd {
 	}
 }
 
-func (p *SQSPage) receiveMessagesCmd(profile, region string, queue domainsqs.Queue) tea.Cmd {
+func (p *SQSPage) receiveMessagesCmd(profile, region, sessionKey string, queue domainsqs.Queue) tea.Cmd {
 	if p.messagesCancel != nil {
 		p.messagesCancel()
 	}
@@ -27,11 +27,11 @@ func (p *SQSPage) receiveMessagesCmd(profile, region string, queue domainsqs.Que
 	p.messagesCancel = cancel
 	return func() tea.Msg {
 		messages, err := p.service.ReceiveMessages(ctx, appsqs.QueueActionInput{Profile: profile, Region: region, Queue: queue, MaxCount: 10})
-		return messagesLoadedMsg{queueName: queue.Name, messages: messages, err: err}
+		return messagesLoadedMsg{sessionKey: sessionKey, queueName: queue.Name, messages: messages, err: err}
 	}
 }
 
-func (p *SQSPage) purgeQueueCmd(profile, region string, queue domainsqs.Queue) tea.Cmd {
+func (p *SQSPage) purgeQueueCmd(profile, region, sessionKey string, queue domainsqs.Queue) tea.Cmd {
 	if p.purgeCancel != nil {
 		p.purgeCancel()
 	}
@@ -39,6 +39,6 @@ func (p *SQSPage) purgeQueueCmd(profile, region string, queue domainsqs.Queue) t
 	p.purgeCancel = cancel
 	return func() tea.Msg {
 		err := p.service.PurgeQueue(ctx, appsqs.QueueActionInput{Profile: profile, Region: region, Queue: queue})
-		return queuePurgedMsg{queueName: queue.Name, err: err}
+		return queuePurgedMsg{sessionKey: sessionKey, queueName: queue.Name, err: err}
 	}
 }
