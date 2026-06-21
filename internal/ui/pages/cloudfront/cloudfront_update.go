@@ -1,13 +1,14 @@
 package cloudfront
 
 import (
-	"aws-terminal/internal/ui/pageapi"
-	"aws-terminal/internal/ui/workflow"
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -28,7 +29,7 @@ func (p *CloudFrontPage) OnStateChanged(state pageapi.State) tea.Cmd {
 
 	p.loading = true
 	p.loadErr = ""
-	return p.loadDistributionsCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), sessionKey)
+	return tea.Batch(p.spinner.Tick, p.loadDistributionsCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), sessionKey))
 }
 
 func (p *CloudFrontPage) SetFocused(focused bool) tea.Cmd {
@@ -45,7 +46,7 @@ func (p *CloudFrontPage) SetFocused(focused bool) tea.Cmd {
 func (p *CloudFrontPage) Update(msg tea.Msg, state pageapi.State) tea.Cmd {
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
-		if !p.creating {
+		if !p.loading && !p.creating {
 			return nil
 		}
 		var cmd tea.Cmd

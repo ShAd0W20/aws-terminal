@@ -1,11 +1,12 @@
 package ecr
 
 import (
-	"aws-terminal/internal/ui/pageapi"
-	"aws-terminal/internal/ui/workflow"
 	"context"
 	"errors"
 	"fmt"
+
+	"aws-terminal/internal/ui/pageapi"
+	"aws-terminal/internal/ui/workflow"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -23,7 +24,7 @@ func (p *ECRPage) OnStateChanged(state pageapi.State) tea.Cmd {
 	}
 	p.loadingRepositories = true
 	p.repositoryErr = ""
-	return p.loadRepositoriesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), sessionKey)
+	return tea.Batch(p.spinner.Tick, p.loadRepositoriesCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), sessionKey))
 }
 
 func (p *ECRPage) SetFocused(focused bool) tea.Cmd {

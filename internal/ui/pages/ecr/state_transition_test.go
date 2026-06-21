@@ -89,7 +89,7 @@ func TestRepositorySelectionLoadsImages(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected load command")
 	}
-	p.Update(cmd(), state)
+	runECRCmd(p, cmd, state)
 	if len(p.repositories) != 1 {
 		t.Fatalf("repositories not loaded: %#v", p.repositories)
 	}
@@ -100,6 +100,19 @@ func TestRepositorySelectionLoadsImages(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected images load command")
 	}
+}
+
+func runECRCmd(p *ECRPage, cmd tea.Cmd, state pageapi.State) {
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, cmd := range batch {
+			if cmd != nil {
+				p.Update(cmd(), state)
+			}
+		}
+		return
+	}
+	p.Update(msg, state)
 }
 
 func TestLocalImageListWindowFollowsSelection(t *testing.T) {
