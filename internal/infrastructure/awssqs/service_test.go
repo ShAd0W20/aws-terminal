@@ -21,6 +21,7 @@ type fakeSQSClient struct {
 	attrInputs []string
 	received   bool
 	purged     bool
+	maxCount   int32
 }
 
 func (f *fakeSQSClient) ListQueues(ctx context.Context, params *awssqssdk.ListQueuesInput, optFns ...func(*awssqssdk.Options)) (*awssqssdk.ListQueuesOutput, error) {
@@ -39,6 +40,7 @@ func (f *fakeSQSClient) GetQueueAttributes(ctx context.Context, params *awssqssd
 }
 func (f *fakeSQSClient) ReceiveMessage(ctx context.Context, params *awssqssdk.ReceiveMessageInput, optFns ...func(*awssqssdk.Options)) (*awssqssdk.ReceiveMessageOutput, error) {
 	f.received = true
+	f.maxCount = params.MaxNumberOfMessages
 	return &awssqssdk.ReceiveMessageOutput{Messages: []sqstypes.Message{{MessageId: aws.String("m1"), Body: aws.String("hello"), ReceiptHandle: aws.String("rh"), Attributes: map[string]string{string(sqstypes.MessageSystemAttributeNameSentTimestamp): "1000"}}}}, nil
 }
 func (f *fakeSQSClient) PurgeQueue(ctx context.Context, params *awssqssdk.PurgeQueueInput, optFns ...func(*awssqssdk.Options)) (*awssqssdk.PurgeQueueOutput, error) {
@@ -104,8 +106,8 @@ func TestReceiveMessagesAndPurgeQueue(t *testing.T) {
 	if err := svc.PurgeQueue(context.Background(), appsqs.QueueActionInput{Profile: "dev", Region: "us-east-1", Queue: domainsqs.Queue{Name: "q", URL: "url"}}); err != nil {
 		t.Fatal(err)
 	}
-	if !client.received || !client.purged {
-		t.Fatalf("received=%v purged=%v", client.received, client.purged)
+	if !client.received || !client.purged || client.maxCount != 10 {
+		t.Fatalf("received=%v purged=%v maxCount=%d", client.received, client.purged, client.maxCount)
 	}
 }
 

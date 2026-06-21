@@ -82,13 +82,9 @@ func (s *Service) ReceiveMessages(ctx context.Context, input appsqs.QueueActionI
 	if err != nil {
 		return nil, err
 	}
-	maxCount := input.MaxCount
-	if maxCount <= 0 || maxCount > 10 {
-		maxCount = 10
-	}
 	output, err := client.ReceiveMessage(ctx, &awssqssdk.ReceiveMessageInput{
 		QueueUrl:            aws.String(input.Queue.URL),
-		MaxNumberOfMessages: maxCount,
+		MaxNumberOfMessages: input.MaxCount,
 		MessageSystemAttributeNames: []sqstypes.MessageSystemAttributeName{
 			sqstypes.MessageSystemAttributeNameSentTimestamp,
 		},
@@ -98,12 +94,7 @@ func (s *Service) ReceiveMessages(ctx context.Context, input appsqs.QueueActionI
 	}
 	messages := make([]domainsqs.Message, 0, len(output.Messages))
 	for _, message := range output.Messages {
-		messages = append(messages, domainsqs.Message{
-			ID:            aws.ToString(message.MessageId),
-			Body:          aws.ToString(message.Body),
-			ReceiptHandle: aws.ToString(message.ReceiptHandle),
-			SentAt:        parseUnixMilliseconds(message.Attributes[string(sqstypes.MessageSystemAttributeNameSentTimestamp)]),
-		})
+		messages = append(messages, messageFromAWS(message))
 	}
 	return messages, nil
 }
@@ -171,6 +162,15 @@ func queueFromAttributes(ctx context.Context, client sqsClient, queueURL string)
 		AvailableMessages: parseAttributeInt(attrs[string(sqstypes.QueueAttributeNameApproximateNumberOfMessages)]),
 		InFlightMessages:  parseAttributeInt(attrs[string(sqstypes.QueueAttributeNameApproximateNumberOfMessagesNotVisible)]),
 	}, nil
+}
+
+func messageFromAWS(message sqstypes.Message) domainsqs.Message {
+	return domainsqs.Message{
+		ID:            aws.ToString(message.MessageId),
+		Body:          aws.ToString(message.Body),
+		ReceiptHandle: aws.ToString(message.ReceiptHandle),
+		SentAt:        parseUnixMilliseconds(message.Attributes[string(sqstypes.MessageSystemAttributeNameSentTimestamp)]),
+	}
 }
 
 func parseUnixMilliseconds(value string) time.Time {
