@@ -30,6 +30,8 @@ A keyboard-first terminal UI for working with AWS resources from your local shel
 - List CloudFront distributions and create/poll invalidations.
 - List/search private ECR repositories, create repositories, and push local Docker images.
 - Browse ECS clusters, services, and running tasks with compact service/task detail views that highlight status, IP/network placement, containers, failure reasons, and CloudWatch `awslogs` task logs.
+- Browse EC2 instances, view instance details, stop/terminate instances with confirmation, and connect to running instances through AWS Systems Manager Session Manager.
+- Browse SQS queues, inspect approximate message counts, view received messages without deleting them, and purge queues with typed confirmation.
 - Bubble Tea powered TUI with keyboard navigation and cancellable long-running workflows.
 
 ## Install
@@ -193,6 +195,41 @@ Docker must be running locally for image discovery and push workflows.
 - In the Logs tab, scroll through the viewport with `↑`/`↓` or `k`/`j`, switch task-detail tabs with `[`/`]`, and switch log containers with `ctrl+h`/`ctrl+l`.
 - Required IAM permissions for task logs include ECS task-definition read access, such as `ecs:DescribeTaskDefinition`, and CloudWatch Logs access, such as `logs:GetLogEvents`.
 - Required IAM permissions for service updates include `ecs:ListTaskDefinitions` and `ecs:UpdateService`, plus any `iam:PassRole` permissions required by the selected task definition. Required IAM permissions for stopping tasks include `ecs:StopTask`.
+
+### EC2 instances
+
+- List and search non-terminated EC2 instances for the active profile/region.
+- Open instance details to see status, network placement, runtime metadata, security groups, block devices, network interfaces, tags, and identifiers.
+- Stop running instances from the detail view with a review screen.
+- Terminate instances from the detail view only after typing the exact instance ID.
+- Connect to running instances from the detail view with `c` using AWS Systems Manager Session Manager.
+
+EC2 Session Manager connections shell out to the AWS CLI command `aws ssm start-session`. To use this feature, install both the AWS CLI and the Session Manager plugin locally:
+
+```bash
+brew install awscli
+brew install --cask session-manager-plugin
+session-manager-plugin --version
+```
+
+The target instance must also be configured for Session Manager access, including an attached IAM role with SSM permissions and a running SSM Agent.
+
+### SQS queues
+
+- List and search SQS queues for the active profile/region.
+- View approximate available and in-flight message counts.
+- Pull up to 10 messages for view-only inspection. Messages are not deleted and may remain temporarily in-flight until their visibility timeout expires.
+- Purge a queue only after typing the exact queue name.
+
+Useful keys:
+
+| Key | Action |
+| --- | --- |
+| `enter` | Open queue actions |
+| `ctrl+f` | Search queues |
+| `p` | Pull messages for view-only inspection |
+| `x` | Purge queue with typed confirmation |
+| `b` / `esc` | Go back/cancel depending on the stage |
 
 ## Safety model
 
