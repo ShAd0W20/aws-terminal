@@ -112,6 +112,38 @@ func TestTerminateRequiresExactInstanceID(t *testing.T) {
 	}
 }
 
+func TestConnectUsesSessionManagerCommand(t *testing.T) {
+	page := NewEC2Page(&fakeEC2Service{})
+	state := ec2TestState()
+	page.sessionKey = "dev:eu-west-1"
+	page.stage = ec2StageInstanceDetail
+	page.selected = domainec2.Instance{ID: "i-123", Name: "api", State: "running"}
+	cmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")}, state)
+	if cmd == nil || !page.connecting || page.stage != ec2StageConnecting {
+		t.Fatalf("expected connect command, stage=%v connecting=%v", page.stage, page.connecting)
+	}
+	page.Update(instanceConnectionFinishedMsg{sessionKey: page.sessionKey, instanceID: "i-123"}, state)
+	if page.stage != ec2StageInstanceDetail || page.connecting || !strings.Contains(page.actionMessage, "connection closed") {
+		t.Fatalf("unexpected connection finish: stage=%v connecting=%v message=%q", page.stage, page.connecting, page.actionMessage)
+	}
+
+	ssmCmd := buildSessionManagerCommand("dev", "eu-west-1", "i-123")
+	wantArgs := []string{"aws", "ssm", "start-session", "--target", "i-123", "--profile", "dev", "--region", "eu-west-1"}
+	if strings.Join(ssmCmd.Args, " ") != strings.Join(wantArgs, " ") {
+		t.Fatalf("command args=%v", ssmCmd.Args)
+	}
+}
+
+func TestConnectRequiresRunningInstance(t *testing.T) {
+	page := NewEC2Page(&fakeEC2Service{})
+	page.stage = ec2StageInstanceDetail
+	page.selected = domainec2.Instance{ID: "i-123", State: "stopped"}
+	cmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")}, ec2TestState())
+	if cmd != nil || page.stage != ec2StageInstanceDetail || page.actionErr == "" {
+		t.Fatalf("expected connect validation error, stage=%v err=%q", page.stage, page.actionErr)
+	}
+}
+
 func TestStaleActionResultsAreIgnored(t *testing.T) {
 	page := NewEC2Page(&fakeEC2Service{})
 	page.sessionKey = "current"

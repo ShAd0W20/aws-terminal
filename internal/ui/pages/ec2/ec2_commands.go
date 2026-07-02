@@ -2,6 +2,7 @@ package ec2
 
 import (
 	"context"
+	"os/exec"
 
 	"github.com/charmbracelet/bubbletea"
 
@@ -38,6 +39,13 @@ func (p *EC2Page) terminateInstanceCmd(input domainec2.TerminateInstanceInput, s
 	}
 }
 
+func (p *EC2Page) connectInstanceCmd(profile, region, instanceID, sessionKey string) tea.Cmd {
+	cmd := buildSessionManagerCommand(profile, region, instanceID)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return instanceConnectionFinishedMsg{sessionKey: sessionKey, instanceID: instanceID, err: err}
+	})
+}
+
 func (p *EC2Page) cancelLoad() {
 	if p.loadCancel != nil {
 		p.loadCancel()
@@ -55,4 +63,8 @@ func (p *EC2Page) cancelAction() {
 func (p *EC2Page) cancelAll() {
 	p.cancelLoad()
 	p.cancelAction()
+}
+
+func buildSessionManagerCommand(profile, region, instanceID string) *exec.Cmd {
+	return exec.Command("aws", "ssm", "start-session", "--target", instanceID, "--profile", profile, "--region", region)
 }

@@ -24,6 +24,7 @@ const (
 	ec2StageInstanceDetail
 	ec2StageStopReview
 	ec2StageStopping
+	ec2StageConnecting
 	ec2StageTerminateConfirm
 	ec2StageTerminating
 )
@@ -48,13 +49,20 @@ type instanceTerminatedMsg struct {
 	err        error
 }
 
-func (instancesLoadedMsg) OwnerPageID() string    { return "ec2" }
-func (instanceStoppedMsg) OwnerPageID() string    { return "ec2" }
-func (instanceTerminatedMsg) OwnerPageID() string { return "ec2" }
-func (*EC2Page) ID() string                       { return "ec2" }
-func (*EC2Page) Title() string                    { return "EC2" }
-func (*EC2Page) Description() string              { return "Browse and manage EC2 instances." }
-func (p *EC2Page) HasFocusedInput() bool          { return p.search.Focused() || p.terminateInput.Focused() }
+type instanceConnectionFinishedMsg struct {
+	sessionKey string
+	instanceID string
+	err        error
+}
+
+func (instancesLoadedMsg) OwnerPageID() string            { return "ec2" }
+func (instanceStoppedMsg) OwnerPageID() string            { return "ec2" }
+func (instanceTerminatedMsg) OwnerPageID() string         { return "ec2" }
+func (instanceConnectionFinishedMsg) OwnerPageID() string { return "ec2" }
+func (*EC2Page) ID() string                               { return "ec2" }
+func (*EC2Page) Title() string                            { return "EC2" }
+func (*EC2Page) Description() string                      { return "Browse and manage EC2 instances." }
+func (p *EC2Page) HasFocusedInput() bool                  { return p.search.Focused() || p.terminateInput.Focused() }
 
 type EC2Page struct {
 	service        EC2Service
@@ -73,6 +81,7 @@ type EC2Page struct {
 	loadCancel     context.CancelFunc
 	actionCancel   context.CancelFunc
 	stopping       bool
+	connecting     bool
 	terminating    bool
 	actionErr      string
 	actionMessage  string

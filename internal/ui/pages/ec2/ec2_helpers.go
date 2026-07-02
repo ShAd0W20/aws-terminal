@@ -27,6 +27,7 @@ func (p *EC2Page) resetForSession() {
 	p.terminateInput.SetValue("")
 	p.terminateInput.Blur()
 	p.stopping = false
+	p.connecting = false
 	p.terminating = false
 	p.actionErr = ""
 	p.actionMessage = ""
@@ -126,6 +127,10 @@ func findInstanceByID(instances []domainec2.Instance, id string) (domainec2.Inst
 }
 
 func isStoppable(instance domainec2.Instance) bool {
+	return strings.EqualFold(strings.TrimSpace(instance.State), "running")
+}
+
+func isConnectable(instance domainec2.Instance) bool {
 	return strings.EqualFold(strings.TrimSpace(instance.State), "running")
 }
 

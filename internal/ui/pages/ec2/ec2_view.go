@@ -45,6 +45,8 @@ func (p *EC2Page) View(state pageapi.State, width, height int) string {
 		lines = append(lines, p.stopReviewLines()...)
 	case ec2StageStopping:
 		lines = append(lines, p.stoppingLines()...)
+	case ec2StageConnecting:
+		lines = append(lines, p.connectingLines()...)
 	case ec2StageTerminateConfirm:
 		lines = append(lines, p.terminateConfirmLines()...)
 	case ec2StageTerminating:
@@ -59,6 +61,9 @@ func (p *EC2Page) ShortHelp() []key.Binding {
 		return []key.Binding{ec2UpKey, ec2DownKey, ec2EnterKey, ec2SearchKey, ec2RefreshKey, ec2CancelKey, ec2TabKey}
 	case ec2StageInstanceDetail:
 		keys := []key.Binding{ec2RefreshKey}
+		if isConnectable(p.selected) {
+			keys = append(keys, ec2ConnectKey)
+		}
 		if isStoppable(p.selected) {
 			keys = append(keys, ec2StopKey)
 		}
@@ -68,7 +73,7 @@ func (p *EC2Page) ShortHelp() []key.Binding {
 		return append(keys, ec2BackKey, ec2CancelKey, ec2TabKey)
 	case ec2StageStopReview, ec2StageTerminateConfirm:
 		return []key.Binding{ec2EnterKey, ec2BackKey, ec2CancelKey, ec2TabKey}
-	case ec2StageStopping, ec2StageTerminating:
+	case ec2StageStopping, ec2StageConnecting, ec2StageTerminating:
 		return []key.Binding{ec2CancelKey, ec2TabKey}
 	default:
 		return []key.Binding{ec2TabKey}
@@ -175,7 +180,7 @@ func (p *EC2Page) instanceDetailLines() []string {
 		detailKV("Name", i.Name),
 		detailKV("Instance ID", i.ID),
 		"",
-		styles.MutedStyle.Render("s stops running instances · x terminates with typed confirmation · b/Esc returns"),
+		styles.MutedStyle.Render("c connects with Session Manager · s stops running instances · x terminates with typed confirmation · b/Esc returns"),
 	)
 	return lines
 }
@@ -198,6 +203,16 @@ func (p *EC2Page) stopReviewLines() []string {
 
 func (p *EC2Page) stoppingLines() []string {
 	return []string{styles.MutedStyle.Render("Stop instance"), fmt.Sprintf("Instance: %s", p.selected.ID), "", styles.StatusStyle.Render(p.spinner.View() + " Requesting instance stop..."), styles.MutedStyle.Render("Esc cancels waiting; AWS may still process the request if it already reached EC2.")}
+}
+
+func (p *EC2Page) connectingLines() []string {
+	return []string{
+		styles.MutedStyle.Render("Connect with Session Manager"),
+		fmt.Sprintf("Instance: %s", p.selected.ID),
+		"",
+		styles.StatusStyle.Render("Starting aws ssm start-session..."),
+		styles.MutedStyle.Render("The TUI will resume when the session exits. Requires AWS CLI and the Session Manager plugin."),
+	}
 }
 
 func (p *EC2Page) terminateConfirmLines() []string {

@@ -56,6 +56,8 @@ func (p *EC2Page) Update(msg tea.Msg, state pageapi.State) tea.Cmd {
 		return p.handleInstanceStopped(msg, state)
 	case instanceTerminatedMsg:
 		return p.handleInstanceTerminated(msg, state)
+	case instanceConnectionFinishedMsg:
+		return p.handleInstanceConnectionFinished(msg)
 	}
 
 	keyMsg, isKey := msg.(tea.KeyMsg)
@@ -86,10 +88,11 @@ func (p *EC2Page) Update(msg tea.Msg, state pageapi.State) tea.Cmd {
 		return p.updateStopReviewStage(keyMsg, state)
 	case ec2StageTerminateConfirm:
 		return p.updateTerminateConfirmStage(msg, state)
-	case ec2StageStopping, ec2StageTerminating:
+	case ec2StageStopping, ec2StageConnecting, ec2StageTerminating:
 		if key.Matches(keyMsg, ec2CancelKey, ec2BackKey) {
 			p.cancelAction()
 			p.stopping = false
+			p.connecting = false
 			p.terminating = false
 			p.stage = ec2StageInstanceDetail
 			p.actionErr = "Action cancelled."
@@ -181,6 +184,22 @@ func (p *EC2Page) handleInstanceTerminated(msg instanceTerminatedMsg, state page
 	return p.startRefresh(state)
 }
 
+func (p *EC2Page) handleInstanceConnectionFinished(msg instanceConnectionFinishedMsg) tea.Cmd {
+	if msg.sessionKey != p.sessionKey || msg.instanceID != p.selected.ID {
+		return nil
+	}
+	p.connecting = false
+	p.stage = ec2StageInstanceDetail
+	if msg.err != nil {
+		p.actionErr = fmt.Sprintf("Unable to connect with Session Manager: %v", msg.err)
+		p.actionMessage = ""
+		return nil
+	}
+	p.actionErr = ""
+	p.actionMessage = "Session Manager connection closed."
+	return nil
+}
+
 func (p *EC2Page) updateInstancesStage(msg tea.KeyMsg, state pageapi.State) tea.Cmd {
 	switch {
 	case key.Matches(msg, ec2SearchKey):
@@ -222,6 +241,19 @@ func (p *EC2Page) updateInstanceDetailStage(msg tea.KeyMsg, state pageapi.State)
 		p.actionErr = ""
 	case key.Matches(msg, ec2RefreshKey):
 		return p.startRefresh(state)
+	case key.Matches(msg, ec2ConnectKey):
+		if state.ActiveSession == nil {
+			return nil
+		}
+		if !isConnectable(p.selected) {
+			p.actionErr = "Instance must be running to connect with Session Manager."
+			return nil
+		}
+		p.connecting = true
+		p.actionErr = ""
+		p.actionMessage = "Opening Session Manager connection..."
+		p.stage = ec2StageConnecting
+		return p.connectInstanceCmd(state.ActiveSession.Profile, workflow.ActiveRegion(state), p.selected.ID, p.sessionKey)
 	case key.Matches(msg, ec2StopKey):
 		if !isStoppable(p.selected) {
 			p.actionErr = "Instance cannot be stopped from its current state."
